@@ -1,0 +1,28 @@
+#http://172.104.188.7/
+#https://dec.com.ph/
+
+# Apache configuration file
+# http://httpd.apache.org/docs/2.2/mod/quickreference.html
+
+# Turning on the rewrite engine is necessary for the following rules and
+# features. "+FollowSymLinks" must be enabled for this to work symbolically.
+
+<IfModule mod_rewrite.c>
+    Options FollowSymLinks
+    RewriteEngine On
+</IfModule>
+
+# For all files not found in the file system, reroute the request to the
+# "index.php" front controller, keeping the query string intact
+
+<IfModule mod_rewrite.c>
+
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^(.*)$ index.php/$1 [L]
+
+    RewriteCond %{HTTP_HOST} ^172\.104\.188\.7
+    RewriteRule ^(.*)$ https://dec.com.ph/amr/$1 [R=301,L]
+
+</IfModule>
+

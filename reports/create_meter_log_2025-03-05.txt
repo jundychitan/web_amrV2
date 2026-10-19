@@ -1,0 +1,2 @@
+2025-03-05 13:30:09 | 175.176.19.39 | Usertype:Admin | Username: admin | User ID: 3 | Meter S/N : 0803498540 
+2025-03-05 15:16:16 | 175.176.19.39 | Usertype:Admin | Username: admin | User ID: 3 | Meter S/N : 19006875 

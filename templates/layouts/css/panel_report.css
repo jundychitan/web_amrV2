@@ -1,0 +1,490 @@
+/*==================================================
+=            Bootstrap 3 Media Queries             =
+==================================================*/
+
+    /*==========  Mobile First Method  ==========*/
+
+    /* Custom, iPhone Retina */ 
+    @media only screen and (min-width : 320px) {
+
+			.panel-body-custom{
+				height: auto !important;
+				max-height: 89% !important;
+				min-height: 84%;
+				overflow: auto;
+			}
+	
+			.table-data-span {
+				color: BLUE;
+				overflow: auto;
+				height: auto !important;
+				min-height: 52%;
+				max-height: 62%;
+			}
+			
+		#mobile_view{
+			display:block;
+			position:fixed;
+			z-index:9999;
+		}
+			
+			#mobile_view_option{
+							height: 65%;
+
+				color: #000;
+				display: none;
+				position: fixed;
+				z-index: 9999;
+				width: 75%;
+				margin: 10px;
+				background: rgba(103, 113, 110, 0.92);
+				z-index: 9999;
+				padding: 10px;
+				border-radius: 5px;height: 100%;
+				max-height:100%;
+				overflow-y: scroll;
+			}
+	
+		
+			
+		
+	        
+
+    }
+
+    /* Extra Small Devices, Phones */ 
+    @media only screen and (min-width : 480px) {
+		
+			.panel-body-custom{
+				height: auto !important;
+				max-height: 89% !important;
+				min-height: 84%;
+				overflow: auto;
+			}
+	
+			.table-data-span {
+				color: BLUE;
+				overflow: auto;
+				height: auto !important;
+				min-height: 52%;
+				max-height: 62%;
+			}
+			
+		#mobile_view{
+			display:block;
+			position:fixed;
+			z-index:9999;
+		}
+
+			#mobile_view_option{
+				color: #000;
+				height: 65%;
+				display: none;
+				position: fixed;
+				z-index: 9999;
+				width: 75%;
+				margin: 10px;
+				background: rgba(103, 113, 110, 0.92);
+				z-index: 9999;
+				padding: 10px;
+				border-radius: 5px;height: 100%;
+				max-height:100%;
+				overflow-y: scroll;
+			}
+	
+		
+			
+		
+	        
+
+    }
+
+    /* Small Devices, Tablets */
+    @media only screen and (min-width : 768px) {
+		
+	
+		
+				
+			.panel-body-custom{
+				height: auto !important;
+				max-height: 89% !important;
+				min-height: 84%;
+				overflow: auto;
+			}
+	
+			.table-data-span {
+				color: BLUE;
+				overflow: auto;
+				height: auto !important;
+				min-height: 52%;
+				max-height: 62%;
+			}
+			
+		#mobile_view{
+			display:block;
+			position:fixed;
+			z-index:9999;
+		}
+			
+			#mobile_view_option{
+				color: #000;
+				height: 65%;
+
+				display: none;
+				position: fixed;
+				z-index: 9999;
+				width: 65%;
+				margin: 50px;
+				background: rgba(103, 113, 110, 0.92);
+				z-index: 9999;
+				padding: 10px;
+				border-radius: 5px;height: 100%;
+				max-height:100%;
+				overflow-y: scroll;
+			}
+	
+		
+			
+		
+	        }
+
+    /* Medium Devices, Desktops */
+    @media only screen and (min-width : 992px) {
+	
+			
+		.panel-body-custom{
+			height: auto !important;
+			max-height: 89% !important;
+			min-height: 84%;
+			overflow: auto;
+		}
+
+		.table-data-span {
+			color: BLUE;
+			overflow: auto;
+			height: auto !important;
+			min-height: 52%;
+			max-height: 62%;
+		}
+		
+		#mobile_view{
+			display:block;
+			position:fixed;
+			z-index:9999;
+		}
+		
+		#mobile_view_close{
+			display:block;
+			position:fixed;
+		}
+
+		
+		#mobile_view_option{
+			color:#000;
+			display:none;
+			position:fixed;
+			z-index:9999;			
+			width: 52%;
+			margin: 120px;
+			background: rgba(103, 113, 110, 0.92);
+			z-index: 9999;
+			padding: 20px;
+			border-radius: 5px;height: 100%;		
+			max-height:100%;
+			height: 65%;
+			overflow-x: scroll;
+			overflow-y: scroll;
+		}
+		
+
+	
+		
+    }
+
+
+    @media only screen and (min-width : 1200px) {
+		
+		.panel-body-custom{
+			height: auto !important;
+			max-height: 70% !important;
+			min-height: 77%; 
+			overflow: hidden;	
+		}
+
+		.table-data-span {
+			/*overflow: auto;
+			height: auto !important;
+			min-height: 55%;
+			max-height: 65%;*/
+			overflow: auto;
+			height: auto !important;
+			min-height: 37%;
+			max-height: 42%;
+		}
+		
+		#mobile_view{
+			display:block;
+			position:fixed;
+			z-index:9999;
+		}
+		
+		#mobile_view{
+			display:none;
+			position:fixed;
+			z-index:9999;
+		}
+		
+		#mobile_view_option{
+			color:#000;
+			display:block;
+			position: inherit;/**/
+			z-index:9999 !important;			
+			width: auto;
+			margin: 0px;
+			background: none;
+			padding: 0px;
+			border-radius: 0px;						
+			max-height:100%;
+			overflow-y: hidden;
+			overflow-x: hidden;
+			height: 72%;
+		}
+
+
+    }
+
+    /*==========  Non-Mobile First Method  ==========*/
+
+    /* Large Devices, Wide Screens */
+    @media only screen and (max-width : 1200px) {
+
+		.panel-body-custom{
+			height: auto !important;
+			max-height: 89% !important;
+			min-height: 84%;
+			overflow: auto;
+		}
+
+		.table-data-span {
+			/*overflow: auto;
+			height: auto !important;
+			min-height: 52%;
+			max-height: 62%;*/
+			overflow: auto;
+			height: auto !important;
+			min-height: 42%;
+			max-height: 47%;
+
+		}
+
+		#mobile_view{
+			display:none;
+			position:fixed;
+			z-index:9999;
+		}
+		
+		#mobile_view_close{
+			display:none;
+			position:fixed;
+		}
+		
+		#mobile_view_option{
+			color:#000;
+			display:block;
+			/**/position: inherit;
+			z-index:9999 !important;			
+			width: auto;
+			margin: 0px;
+			background: none;
+			padding: 0px;
+			border-radius: 0px;		
+			max-height:100%;
+			overflow-y: hidden;
+			overflow-x: hidden;
+			height: 65%;
+		}
+
+    }
+
+    /* Medium Devices, Desktops */
+    @media only screen and (max-width : 992px) {
+		
+		.panel-body-custom{
+			height: auto !important;
+			max-height: 89% !important;
+			min-height: 84%;
+			overflow: auto;
+		}
+
+		.table-data-span {
+			color: RED;
+			overflow: auto;
+			height: auto !important;
+			min-height: 52%;
+			max-height: 62%;
+		}
+		
+		#mobile_view{
+			display:block;
+			position:fixed;
+			z-index:9999;
+		}
+
+		#mobile_view_close{
+			display:block;
+			position:fixed;
+		}
+
+		#mobile_view_option{
+			height: 65%;
+			color:#000;
+			display:none;
+			position:fixed;
+			top:0;
+			left:0;
+			width: 100%;
+			margin: 0;
+			background: rgba(103, 113, 110, 0.92);
+			z-index: 9999;
+			padding: 20px;
+			border-radius: 5px;height: 100%;	
+			height: 65%;
+			max-height:100%;
+			overflow-x: scroll;
+			overflow-y: scroll;
+		}
+
+    }
+
+    /* Small Devices, Tablets */
+    @media only screen and (max-width : 768px) {
+			.panel-body-custom{
+				height: auto !important;
+				max-height: 89% !important;
+				min-height: 84%;
+				overflow: auto;
+			}
+	
+			.table-data-span {
+				color: BLUE;
+				overflow: auto;
+				height: auto !important;
+				min-height: 52%;
+				max-height: 62%;
+			}
+			
+		#mobile_view{
+			display:block;
+			position:fixed;
+			z-index:9999;
+		}
+			
+			#mobile_view_option{
+				color: #000;
+			height: 65%;
+				display: none;
+				position: fixed;
+				z-index: 9999;
+				top:0;
+				left:0;
+				width: 100%;
+				margin: 0;
+				background: rgba(103, 113, 110, 0.92);
+				z-index: 9999;
+				padding: 10px;
+				border-radius: 5px;height: 100%;
+				max-height:100%;
+				overflow-y: scroll;
+			}
+		
+	}
+
+    /* Extra Small Devices, Phones */ 
+    @media only screen and (max-width : 480px) {
+
+			.panel-body-custom{
+				height: auto !important;
+				max-height: 89% !important;
+				min-height: 84%;
+				overflow: auto;
+			}
+	
+			.table-data-span {
+				color: BLUE;
+				overflow: auto;
+				height: auto !important;
+				min-height: 52%;
+				max-height: 62%;
+			}
+			
+		#mobile_view{
+			display:block;
+			position:fixed;
+			z-index:9999;
+		}
+			
+			#mobile_view_option{
+							height: 65%;
+
+				color: #000;
+				display: none;
+				position: fixed;
+				z-index: 9999;
+				top:0;
+				left:0;
+				width: 100%;
+				margin: 0;
+				background: rgba(103, 113, 110, 0.92);
+				z-index: 9999;
+				padding: 10px;
+				border-radius: 5px;height: 100%;
+				max-height:100%;
+				overflow-y: scroll;
+			}
+				
+	}
+
+    /* Custom, iPhone Retina */ 
+    @media only screen and (max-width : 320px) {
+	
+			.panel-body-custom{
+				height: auto !important;
+				max-height: 89% !important;
+				min-height: 84%;
+				overflow: auto;
+			}
+	
+			.table-data-span {
+				color: BLUE;
+				overflow: auto;
+				height: auto !important;
+				min-height: 52%;
+				max-height: 62%;
+			}
+			
+		#mobile_view{
+			display:block;
+			position:fixed;
+			z-index:9999;
+		}
+			
+			#mobile_view_option{
+				color: #000;
+							height: 65%;
+
+				display: none;
+				position: fixed;
+				z-index: 9999;
+				top:0;
+				left:0;
+				width: 100%;
+				margin: 0;
+				background: rgba(103, 113, 110, 0.92);
+				z-index: 9999;
+				padding: 10px;
+				border-radius: 5px;height: 100%;
+				max-height:100%;
+				overflow-y: scroll;
+			}        
+
+    }
