@@ -9,17 +9,7 @@ class Login_model extends CI_Model {
         //$this->db->select('user_name','user_type');
 		$query = $this->db->get('user_tb');  
 		
-		return $query->result_array();
-        
-		if ($query->num_rows() == 1)  
-        {  
-            return true;  
-        	/*Update Last Login*/
-		
-		} else {  
-            return false;  
-			//echo 's';
-        }  
+		return $query !== FALSE && $query->num_rows() === 1 ? $query->result_array() : array();
   
     }  
   

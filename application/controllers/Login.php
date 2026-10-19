@@ -50,6 +50,11 @@ class Login extends CI_Controller {
   
     public function login_action()  
     {  
+        if ($this->session->userdata('currently_logged_in_as')) {
+            // Do not orphan the current account's lock by switching accounts.
+            $this->_login_error('You are already logged in. Please log out before logging in again.');
+            return;
+        }
         $this->load->helper('security');  
         $this->load->library('form_validation');  
   
@@ -59,10 +64,24 @@ class Login extends CI_Controller {
         if ($this->form_validation->run())   
         {  
 			$data_user = $this->login_model->log_in_correctly();
+			if (count($data_user) !== 1) {
+				$this->_login_error('Incorrect username/password.');
+				return;
+			}
 			$user_name = $data_user[0]['user_name'];
 			$user_real_name = $data_user[0]['user_real_name'];
 			$user_id = $data_user[0]['id'];
 			$user_type = $data_user[0]['user_type'];
+			$this->load->model('session_lock_model');
+			$token = $this->session_lock_model->acquire($user_id);
+			if ($token === NULL) {
+				$this->_login_error('Unable to start your session. Please try again shortly.');
+				return;
+			}
+			if ($token === FALSE) {
+				$this->_login_error('This account is already logged in. Please log out from the other terminal first.');
+				return;
+			}
 			
 			$user_list_src = $data_user[0]['user_list_src'];
 
@@ -80,9 +99,11 @@ class Login extends CI_Controller {
 				'user_id' => $user_id,  
 				'user_id_sap' => $user_id_sap,  
                 'currently_logged_in_as' => $user_type,  
-                'user_access' => $user_access  
+                'user_access' => $user_access,
+                'active_session_token' => $token
                 );   
 				
+                $this->session->sess_regenerate(TRUE);
                 $this->session->set_userdata($data);  
                	//REDIRECT BASE ON USERTYPE 
 				if($user_type=='Admin'){
@@ -126,6 +147,15 @@ class Login extends CI_Controller {
   
     public function logout()  
     {  
+        $this->load->model('session_lock_model');
+        if ( ! $this->session_lock_model->release(
+            $this->session->userdata('user_id'),
+            $this->session->userdata('active_session_token')
+        )) {
+            show_error('Unable to log out. Please try again shortly.', 503);
+            return;
+        }
+        $this->session->unset_userdata(array_keys($this->session->userdata()));
         $this->session->sess_destroy();  
 		$data['title'] = 'User Login';
 		$this->load->view('templates/header', $data);
@@ -133,4 +163,12 @@ class Login extends CI_Controller {
 		$this->load->view('templates/footer');
     }  
   
-}  
+    private function _login_error($message)
+    {
+        $data['title'] = 'User Login';
+        $data['login_error'] = $message;
+        $this->load->view('templates/header', $data);
+        $this->load->view('login_view', $data);
+        $this->load->view('templates/footer');
+    }
+}

@@ -11,6 +11,9 @@
 echo form_open('Login/login_action');  
 echo validation_errors();  
 echo @$session_expired;
+if (isset($login_error)) {
+    echo '<div class="alert alert-danger" role="alert">'.html_escape($login_error).'</div>';
+}
 ?>
 <div class="input-group input-group-md">
   <span class="input-group-addon" id="sizing-addon1"><div class="glyphicon glyphicon-user" ></div></span>
