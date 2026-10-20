@@ -6,6 +6,7 @@ define('BASEPATH', dirname(__DIR__).'/system/');
 class CI_Model {
     public function __get($key) { return get_instance()->$key; }
 }
+#[\AllowDynamicProperties]
 class CI_Controller {
     public function __construct()
     {

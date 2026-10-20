@@ -198,7 +198,16 @@ class CI_DB_mysqli_driver extends CI_DB {
 			}
 		}
 
-		if ($this->_mysqli->real_connect($hostname, $this->username, $this->password, $this->database, $port, $socket, $client_flags))
+		try
+		{
+			$connected = $this->_mysqli->real_connect($hostname, $this->username, $this->password, $this->database, $port, $socket, $client_flags);
+		}
+		catch (mysqli_sql_exception $exception)
+		{
+			log_message('error', 'MySQLi connection failed.');
+			return FALSE;
+		}
+		if ($connected)
 		{
 			// Prior to version 5.7.3, MySQL silently downgrades to an unencrypted connection if SSL setup fails
 			if (
@@ -231,9 +240,24 @@ class CI_DB_mysqli_driver extends CI_DB {
 	 */
 	public function reconnect()
 	{
-		if ($this->conn_id !== FALSE && $this->conn_id->ping() === FALSE)
+		if ($this->conn_id !== FALSE)
 		{
-			$this->conn_id = FALSE;
+			try
+			{
+				$result = $this->conn_id->query('SELECT 1');
+				if ($result === FALSE)
+				{
+					$this->conn_id = FALSE;
+				}
+				elseif ($result instanceof mysqli_result)
+				{
+					$result->free();
+				}
+			}
+			catch (mysqli_sql_exception $exception)
+			{
+				$this->conn_id = FALSE;
+			}
 		}
 	}
 
@@ -302,7 +326,15 @@ class CI_DB_mysqli_driver extends CI_DB {
 	 */
 	protected function _execute($sql)
 	{
-		return $this->conn_id->query($this->_prep_query($sql));
+		try
+		{
+			return $this->conn_id->query($this->_prep_query($sql));
+		}
+		catch (mysqli_sql_exception $exception)
+		{
+			// CI_DB_driver::query() owns logging, db_debug and transaction state.
+			return FALSE;
+		}
 	}
 
 	// --------------------------------------------------------------------

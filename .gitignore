@@ -1,0 +1,7 @@
+/deployment-private/
+/deployment-artifacts/
+/.env
+/.env.*
+/deploy/*.local.*
+__pycache__/
+*.pyc

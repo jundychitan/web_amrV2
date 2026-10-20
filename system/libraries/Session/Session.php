@@ -284,8 +284,8 @@ class CI_Session {
 			ini_set('session.name', $params['cookie_name']);
 		}
 
-		isset($params['cookie_path']) OR $params['cookie_path'] = config_item('cookie_path');
-		isset($params['cookie_domain']) OR $params['cookie_domain'] = config_item('cookie_domain');
+		isset($params['cookie_path']) OR $params['cookie_path'] = (string) config_item('cookie_path');
+		isset($params['cookie_domain']) OR $params['cookie_domain'] = (string) config_item('cookie_domain');
 		isset($params['cookie_secure']) OR $params['cookie_secure'] = (bool) config_item('cookie_secure');
 
 		session_set_cookie_params(
@@ -340,7 +340,19 @@ class CI_Session {
 	 */
 	protected function _configure_sid_length()
 	{
-		if (PHP_VERSION_ID < 70100)
+		if (PHP_VERSION_ID >= 80400)
+		{
+			// Reading these settings is supported; changing them is deprecated.
+			// Match PHP's configured generator rather than forcing a different ID.
+			$bits_per_character = (int) ini_get('session.sid_bits_per_character');
+			$sid_length = (int) ini_get('session.sid_length');
+			if ( ! in_array($bits_per_character, array(4, 5, 6), TRUE)
+				OR $sid_length * $bits_per_character < 128)
+			{
+				throw new UnexpectedValueException('Session IDs must provide at least 128 bits of entropy.');
+			}
+		}
+		elseif (PHP_VERSION_ID < 70100)
 		{
 			$hash_function = ini_get('session.hash_function');
 			if (ctype_digit($hash_function))
@@ -417,9 +429,9 @@ class CI_Session {
 				{
 					$_SESSION['__ci_vars'][$key] = 'old';
 				}
-				// Hacky, but 'old' will (implicitly) always be less than time() ;)
+				// Flash markers are strings; temporary-data expirations are integers.
 				// DO NOT move this above the 'new' check!
-				elseif ($value < $current_time)
+				elseif ($value === 'old' OR (is_int($value) && $value < $current_time))
 				{
 					unset($_SESSION[$key], $_SESSION['__ci_vars'][$key]);
 				}

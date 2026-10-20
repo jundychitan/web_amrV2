@@ -55,7 +55,7 @@ class PHPExcel_Writer_Excel2007_StringTable extends PHPExcel_Writer_Excel2007_Wr
             foreach ($pSheet->getCellCollection() as $cellID) {
                 $cell = $pSheet->getCell($cellID);
                 $cellValue = $cell->getValue();
-                if (!is_object($cellValue) &&
+                if (is_string($cellValue) &&
                     ($cellValue !== null) &&
                     $cellValue !== '' &&
                     !isset($aFlippedStringTable[$cellValue]) &&
@@ -137,7 +137,7 @@ class PHPExcel_Writer_Excel2007_StringTable extends PHPExcel_Writer_Excel2007_Wr
      * @param     string                        $prefix            Optional Namespace prefix
      * @throws     PHPExcel_Writer_Exception
      */
-    public function writeRichText(PHPExcel_Shared_XMLWriter $objWriter = null, PHPExcel_RichText $pRichText = null, $prefix = null)
+    public function writeRichText(?PHPExcel_Shared_XMLWriter $objWriter = null, ?PHPExcel_RichText $pRichText = null, $prefix = null)
     {
         if ($prefix !== null) {
             $prefix .= ':';
@@ -221,7 +221,7 @@ class PHPExcel_Writer_Excel2007_StringTable extends PHPExcel_Writer_Excel2007_Wr
      * @param     string                        $prefix            Optional Namespace prefix
      * @throws     PHPExcel_Writer_Exception
      */
-    public function writeRichTextForCharts(PHPExcel_Shared_XMLWriter $objWriter = null, $pRichText = null, $prefix = null)
+    public function writeRichTextForCharts(?PHPExcel_Shared_XMLWriter $objWriter = null, $pRichText = null, $prefix = null)
     {
         if (!$pRichText instanceof PHPExcel_RichText) {
             $textRun = $pRichText;

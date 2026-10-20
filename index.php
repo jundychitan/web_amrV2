@@ -1,4 +1,10 @@
 <?php
+if (PHP_VERSION_ID < 80400)
+{
+	header('HTTP/1.1 503 Service Unavailable.');
+	echo 'This application requires PHP 8.4 or newer.';
+	exit(1);
+}
 /**
  * CodeIgniter
  *
@@ -75,7 +81,7 @@ switch (ENVIRONMENT)
 		ini_set('display_errors', 0);
 		if (version_compare(PHP_VERSION, '5.3', '>='))
 		{
-			error_reporting(E_ALL & ~E_NOTICE & ~E_DEPRECATED & ~E_STRICT & ~E_USER_NOTICE & ~E_USER_DEPRECATED);
+			error_reporting(E_ALL & ~E_NOTICE & ~E_DEPRECATED & ~E_USER_NOTICE & ~E_USER_DEPRECATED);
 		}
 		else
 		{
