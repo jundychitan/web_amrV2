@@ -1,0 +1,32 @@
+; TEMPLATE ONLY: configure a supported, tested PHP release before enabling.
+; Supply AMR_* in the FPM service's protected environment (not source control).
+; The PHP version/socket must match the rendered Apache template.
+; Enable mod_env in Apache for its CI_ENV directive.
+[web-amr]
+user = www-data
+group = www-data
+listen = @@PHP_FPM_SOCKET@@
+listen.owner = www-data
+listen.group = www-data
+listen.mode = 0660
+pm = ondemand
+pm.max_children = 5
+pm.process_idle_timeout = 10s
+clear_env = yes
+security.limit_extensions = .php
+env[CI_ENV] = production
+env[AMR_BASE_URL] = $AMR_BASE_URL
+env[AMR_SESSION_PATH] = $AMR_SESSION_PATH
+env[AMR_DB_HOST] = $AMR_DB_HOST
+env[AMR_DB_PORT] = $AMR_DB_PORT
+env[AMR_DB_NAME] = $AMR_DB_NAME
+env[AMR_DB_USER] = $AMR_DB_USER
+env[AMR_DB_PASSWORD] = $AMR_DB_PASSWORD
+env[AMR_DB_CHARSET] = $AMR_DB_CHARSET
+env[AMR_DB_COLLATION] = $AMR_DB_COLLATION
+php_admin_flag[display_errors] = off
+php_admin_flag[log_errors] = on
+php_admin_flag[expose_php] = off
+php_admin_value[date.timezone] = Asia/Manila
+php_admin_value[upload_max_filesize] = 90M
+php_admin_value[post_max_size] = 100M

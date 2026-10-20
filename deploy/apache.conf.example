@@ -1,0 +1,57 @@
+# TEMPLATE ONLY: replace every @@TOKEN@@ before validation/enabling.
+# Keep the deployment disabled until PHP compatibility and database validation pass.
+# Required modules: alias, rewrite, ssl, proxy, proxy_fcgi, headers, env.
+# Export CI_ENV and AMR_* into the selected PHP-FPM pool/service environment.
+# PHP-FPM clears service environment by default: explicitly pass only needed keys.
+
+<VirtualHost *:80>
+    ServerName @@HOSTNAME@@
+    Redirect permanent / https://@@HOSTNAME@@/
+</VirtualHost>
+
+<VirtualHost *:443>
+    ServerName @@HOSTNAME@@
+    DocumentRoot /srv/web-amr/empty
+    SSLEngine on
+    SSLCertificateFile @@CERTIFICATE_PATH@@
+    SSLCertificateKeyFile @@PRIVATE_KEY_PATH@@
+    Header always set X-Content-Type-Options nosniff
+    SetEnv CI_ENV production
+
+    Alias /amr/ /srv/web-amr/current/
+    <Directory /srv/web-amr/empty>
+        Require all denied
+    </Directory>
+    <Directory /srv/web-amr/current>
+        Require all granted
+        AllowOverride None
+        Options -Indexes -Includes -ExecCGI -MultiViews
+        DirectoryIndex index.php
+        RewriteEngine On
+        RewriteBase /amr/
+        RewriteRule ^(?:application|system|database|tests|deploy|reports|\.git)(?:/|$) - [F,L,NC]
+        RewriteRule (^|/)\. - [F,L]
+        RewriteCond %{REQUEST_FILENAME} !-f
+        RewriteCond %{REQUEST_FILENAME} !-d
+        RewriteRule ^(.*)$ index.php/$1 [L]
+        <FilesMatch "^(?!index\.php$).*\.(?:php|phtml|phar)(?:\.gz|\.bak|~)?$">
+            Require all denied
+        </FilesMatch>
+        <FilesMatch "\.(?:sql|ini|env|log|conf|ya?ml|toml|py)(?:\.gz|\.bak|~)?$">
+            Require all denied
+        </FilesMatch>
+        <Files "index.php">
+            AcceptPathInfo On
+            SetHandler "proxy:unix:@@PHP_FPM_SOCKET@@|fcgi://localhost/"
+        </Files>
+    </Directory>
+    <DirectoryMatch "^/srv/web-amr/current/(?:application|system|database|tests|deploy|reports|meter_upload_list)(?:/|$)">
+        Require all denied
+    </DirectoryMatch>
+    # Direct report URLs are deliberately blocked until authorized download
+    # behavior is verified/adapted. The app may still write files here.
+    # Do not copy .git, tests, deploy, OLD, BACKUP, SQL, or exported reports
+    # into a public release. Copy only reviewed runtime dependencies/assets.
+    ErrorLog ${APACHE_LOG_DIR}/web-amr-error.log
+    CustomLog ${APACHE_LOG_DIR}/web-amr-access.log combined
+</VirtualHost>
