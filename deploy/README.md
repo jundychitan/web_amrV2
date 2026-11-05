@@ -23,7 +23,7 @@ over SSH/SFTP, then **imported on the new server**. The original server stays
 operational and is never the target of an import or destination reset.
 
 1. **Local Windows machine:** run the offline suite in `E:\GitHub\web_amrV2`.
-   Prepare a reviewed snapshot of the actual working tree, including its
+   Prepare a reviewed snapshot of the tested working tree, including any
    uncommitted PHP 8.4 changes, for a private `/opt/web-amr-src` workspace.
 2. **New Ubuntu/Debian server:** verify the installed MariaDB server is 11.8.x;
    provision PHP 8.4 CLI/FPM and Apache (sections 1–2).
@@ -103,12 +103,65 @@ Do not activate the public site until:
    authenticated, ownership-checked download endpoint (or equivalent authorized
    delivery) and update/test the links before approval. Do not simply expose
    every generated report publicly.
-4. Direct PHP endpoints under template directories are assessed: the template
-   permits only the front controller, `index.php`, to execute.
+4. Direct PHP endpoints under template directories are assessed. The template
+   matches the **basename** `index.php`, not exclusively the release-root path.
+   Verify the sanitized release has no other reachable `index.php`, or restrict
+   the handler to the exact front controller. Do not assume `<Files "index.php">`
+   alone proves a root-only execution policy.
 5. External RTU commands, collectors, scheduled jobs, and integrations are
    inventoried and remain isolated until explicitly enabled.
 
 ## 1. Record the deployment inputs
+
+### Final prerequisite check: before any export/import window
+
+Record approval/evidence for each item; the examples below do not establish
+that these prerequisites already exist:
+
+- **Recoverable backups:** confirm a recent source backup with a tested restore
+  path, including historical readings that this setup-only migration excludes.
+  Confirm backup ownership, retention, and rollback responsibilities. A schema
+  dump/setup export is not a replacement for a full recoverable source backup.
+- **Exact destination:** confirm the actual Ubuntu/Debian release, 64-bit
+  architecture, supported package origins, administrative access, and installed
+  MariaDB server/client versions. Local Windows commands and Linux service
+  commands are not interchangeable.
+- **Capacity:** reserve storage for the SQL bundle, extracted private workspace,
+  application releases, both staging and production databases, indexes,
+  temporary files, logs, and backups. Size RAM, PHP-FPM workers, and report
+  limits using representative reports, not the small offline fixtures.
+- **Network and time:** agree hostname, certificate issuance/renewal, DNS and
+  firewall rules, and administrator-only staging access. Do not expose port
+  3306 publicly. Verify time synchronization and source/destination/application
+  timezone expectations before checking time-based reports/session expiry.
+- **Protected configuration:** provision `/secure/amr`, export/restore client
+  option files, `/etc/web-amr/web-amr.env`, and `query-test.env` before their first
+  use. Keep secret files owner-only and outside Git/web roots. Assign a named
+  export, transfer, database-admin, and service operator; a non-root operator
+  cannot write root-owned `/secure` or `/opt` paths without explicit provisioning.
+- **Separate database accounts:** source exporter, destination schema
+  administrator, restricted staging query-test account, staging runtime account,
+  and production runtime account. Provision authentication securely before
+  applying grants; do not rely on GRANT to create a passwordless account.
+  Inspect effective privileges, including roles and pre-existing/global grants.
+- **Schema compatibility:** confirm required session-lock columns, engines,
+  complete metadata visibility, table-name case, cross-schema dependencies,
+  object owners, and the approved setup manifest. Resolve helper guard failures
+  through a reviewed procedure, not by altering the source or bypassing checks.
+  Verify required storage engines/plugins exist on 11.8 and are not silently
+  substituted. Sequences, system-versioned tables, or other special objects
+  need object-specific DBA review rather than an assumed generic restore.
+- **Operational isolation:** identify all collectors, RTUs, cron jobs, events,
+  command flags, and external services. Keep them disconnected from staging
+  and the new production database until separately authorized.
+- **Staging identity:** prefer a separate HTTPS staging hostname and private
+  session directory. If a hosts/DNS override reuses the production hostname,
+  use an isolated browser profile and do not reuse production cookies. Shared
+  cookie names/hosts or session files can disrupt existing browser sessions.
+
+The report-download authorization gap and real MariaDB/browser acceptance are
+still production stop conditions. This documentation review did not execute an
+export, restore, or Linux configuration test.
 
 Record privately:
 
@@ -244,6 +297,9 @@ Keep the database on loopback/private networking. The current production DB
 configuration sets `encrypt => FALSE`; it does not configure database TLS.
 If a remote DB requires TLS, configure and validate certificate verification
 before using it. HTTPS for the browser does not encrypt the database connection.
+`AMR_TEST_DB_SSL_CA` configures only the integration validator, not the web
+application. A successful TLS-enabled validator run does not prove the current
+`encrypt => FALSE` runtime configuration will connect securely.
 
 ## 3. Source/export host: inventory the existing database
 
@@ -276,7 +332,24 @@ environment overrides so the file cannot silently target a different server.
 
 Use a DBA-approved account with complete metadata visibility and the required
 read/export privileges; an incomplete metadata view is not an authoritative
-schema inventory. No source DML/DDL privileges are needed for this procedure.
+schema inventory. The commands perform no source application DML/DDL, but
+**SELECT alone may not be enough to export all definitions**. Have the source
+DBA verify version-specific SHOW VIEW, TRIGGER, EVENT, and routine-definition
+access; MariaDB 10.3 routine dumps may need SELECT on `mysql.proc`.
+Grant only the required metadata capabilities, not ALL/global write privileges,
+and never copy system-table contents into 11.8 as a workaround.
+
+Compare inventory object counts with the DBA's authoritative view. Missing
+privileges can hide objects rather than produce an obvious SQL error. The
+helper's `COMPLETE` marker means its commands finished and visible metadata
+checks passed; it does not certify full privilege visibility, a successful
+restore, or business-query correctness.
+
+The source/destination `[client]` option files must explicitly identify host,
+port/socket, user, and securely provisioned authentication. For TCP tunnels,
+use `127.0.0.1` and the forwarded port: `localhost` can select a Unix socket
+instead of the intended TCP endpoint. Apply the same distinction to
+`AMR_DB_HOST` and `AMR_TEST_DB_HOST`. Verify server identity before each import.
 
 With the protected parent directory already prepared:
 
@@ -405,6 +478,15 @@ operator action; it does not pause writers itself. A single transaction
 snapshots selected InnoDB rows; the schema and data exports are separate
 commands and still depend on the coordinated pause.
 
+Capture the approved retained-table counts/IDs while that window is still in
+effect. Compare restores against this exported baseline, not a source database
+that has since changed. Record when setup edits may resume; if source setup
+changes must be included at activation, create a new consistent approved bundle
+and repeat restore/validation rather than mixing exports or silently losing
+late users/configuration. Historical-reading collection need not be stopped
+solely because excluded history is not being copied, unless it also changes
+selected setup tables or schema.
+
 ```bash
 python3 /opt/web-amr-src/deploy/database_export.py export --defaults-file /secure/amr/source.cnf --database meter_reading --mysql /usr/bin/mysql --mysqldump /usr/bin/mysqldump --manifest /secure/amr/audit/manifest.json --output /secure/amr/export-RELEASE_ID --setup-writes-paused
 ```
@@ -422,6 +504,12 @@ The helper already creates a complete `schema.sql`; section 5.1 is an
 independent schema-extraction option, not a requirement to duplicate exports.
 For schema plus setup rows, use the completed helper bundle as the authoritative
 restore set. Do not mix SQL from different export windows.
+
+Use the new server's MariaDB 11.8 `mariadb` client for import. Dumps produced by
+newer `mariadb-dump` versions can contain a sandbox-mode directive unsupported
+by old clients or Oracle MySQL's client. Do not remove safety directives or use
+`--force` to get around an incompatible import client. Retain dump timezone/
+charset wrappers unless a specific change has been reviewed.
 
 ### 5.3 Transfer the export to the new server
 
@@ -586,7 +674,14 @@ dependency order.
 
 ### 6.3 Reset staging session ownership and create a test account
 
-While the new staging database is isolated, clear its browser ownership:
+Before either staging or production resets, have the DBA review triggers on
+every affected table, including the session-lock UPDATE. If a reset would cause
+unintended trigger side effects, perform it at an approved point before
+restoring those triggers and record the adjusted order. An administrative
+UPDATE is not automatically inert.
+
+Once approved, while the new staging database is isolated, clear its browser
+ownership:
 
 ```sql
 UPDATE amr_test_mariadb118.user_tb
@@ -600,7 +695,7 @@ Have the DBA securely provision an `amr_query_test` account. For a local test
 process, grant reads plus optional temporary-table creation after it exists:
 
 ```sql
-GRANT SELECT, CREATE TEMPORARY TABLES ON amr_test_mariadb118.*
+GRANT SELECT, CREATE TEMPORARY TABLES ON `amr\_test\_mariadb118`.*
 TO 'amr_query_test'@'localhost';
 ```
 
@@ -608,11 +703,23 @@ Adjust the account host to the approved connection path, not unrestricted
 access. Run section 10's query tests using `AMR_TEST_DB_*`. Use a separate
 staging runtime account for browser tests; do not grant permanent DML to the
 restricted query-test account.
+
+The backslashes above escape `_` in a **database-level GRANT pattern**:
+MariaDB treats unescaped `_` as a wildcard even in a quoted database pattern.
+Use literal names such as `amr_test_mariadb118` without these backslashes in
+CREATE DATABASE, USE, connection settings, and application arguments. Have the
+DBA verify grants/active roles and actual access using each intended connection
+path; adding a narrow grant does not revoke earlier broad privileges.
+The `@'localhost'` examples assume the corresponding local account/connection.
+For TCP or an SSH forward, provision the account host as seen by MariaDB and
+verify the match; do not assume a Unix-socket account also matches `127.0.0.1`
+or a remote tunnel endpoint.
+See the [MariaDB GRANT reference](https://mariadb.com/docs/server/reference/sql-statements/account-management-sql-statements/grant).
 For example, after securely provisioning a separate local staging runtime
 account:
 
 ```sql
-GRANT SELECT, INSERT, UPDATE, DELETE ON amr_test_mariadb118.*
+GRANT SELECT, INSERT, UPDATE, DELETE ON `amr\_test\_mariadb118`.*
 TO 'amr_app_stage'@'localhost';
 ```
 
@@ -645,21 +752,28 @@ the schema-import account at runtime.
 For example, after the DBA securely creates a local `amr_app` account:
 
 ```sql
-GRANT SELECT, INSERT, UPDATE, DELETE ON meter_reading.*
+GRANT SELECT, INSERT, UPDATE, DELETE ON `meter\_reading`.*
 TO 'amr_app'@'localhost';
 ```
 
-Update `AMR_DB_NAME=meter_reading` and the runtime user/secret, have the
+Update `AMR_DB_NAME=meter_reading`, the production hostname/base URL, private
+production session path, and runtime user/secret; have the
 administrator restart the dedicated FPM service, and repeat final browser,
 schema, and empty-history checks. Never reuse query-test/import credentials
 for production traffic.
+At the same controlled switch, render Apache's production `ServerName`,
+redirect hostname, and certificate/key paths to match `AMR_BASE_URL`, run
+`apache2ctl configtest`, and reload Apache after success. A FPM environment
+change alone does not change Apache virtual-host routing or its TLS certificate.
 
 ## 7. Prepare a sanitized, immutable release
 
-Use the **tested V2 working tree**. These changes were not committed during
-verification, so `git archive HEAD` or cloning the remote may omit the PHP 8.4
-patches and tests. Transfer a reviewed working-tree snapshot into the private
-`/opt/web-amr-src` workspace, record its checksum, and run the suite on Linux.
+Use the **tested V2 working tree** or a verified commit containing all required
+patches and tests. `git archive HEAD` includes only committed files, and a remote
+clone includes only published commits; either can omit local/untracked changes.
+Record the chosen commit plus any additional working-tree changes. Transfer
+the reviewed artifact into the private `/opt/web-amr-src` workspace, record its
+checksum, and run the suite against that exact artifact on Linux.
 
 ### 7.1 Transfer a private, sanitized working-tree snapshot
 
@@ -738,6 +852,7 @@ write access; create them empty:
 
 ```bash
 sudo install -d -o www-data -g www-data -m 0700 /var/lib/web-amr/sessions
+sudo install -d -o www-data -g www-data -m 0700 /var/lib/web-amr/staging-sessions
 sudo install -d -o www-data -g www-data -m 0750 /srv/web-amr/releases/RELEASE_ID/reports
 sudo install -d -o www-data -g www-data -m 0750 /srv/web-amr/releases/RELEASE_ID/meter_upload_list
 sudo install -d -o www-data -g www-data -m 0750 /srv/web-amr/releases/RELEASE_ID/application/logs
@@ -746,6 +861,13 @@ sudo install -d -o www-data -g www-data -m 0750 /srv/web-amr/releases/RELEASE_ID
 
 Make sure parent directories allow the service user to traverse them. Apply
 log rotation and an approved generated-report retention policy.
+
+Verify the complete path, not just the final writable directory: `www-data`
+must traverse `/var/lib/web-amr` and the release parents; Apache/FPM need the
+dedicated socket permissions and the intended symlink policy. Check applicable
+AppArmor/SELinux restrictions without globally disabling enforcement. Never
+give the web user access to private source/export/secret directories to fix a
+runtime permission error.
 
 For a brand-new destination where `current` does not already exist:
 
@@ -768,9 +890,11 @@ inside the selected release.
 Provision `/etc/web-amr/web-amr.env` through the secret manager, root-owned mode
 `0600`, beneath a protected directory. Set **all** whitelisted values:
 
-- `AMR_BASE_URL`: the final HTTPS URL including `/amr/`, e.g.
-  `https://amr.example.com/amr/`.
-- `AMR_SESSION_PATH`: `/var/lib/web-amr/sessions`.
+- `AMR_BASE_URL`: initially the separate staging HTTPS URL including `/amr/`,
+  e.g. `https://amr-staging.example.com/amr/`; change to the approved production
+  hostname only at the controlled switch.
+- `AMR_SESSION_PATH`: initially `/var/lib/web-amr/staging-sessions`; use
+  `/var/lib/web-amr/sessions` for production. Keep the two sets of files separate.
 - `AMR_DB_HOST`, `AMR_DB_PORT`: destination endpoint; usually private/loopback
   and port `3306`. Use the verified MariaDB 11.8 staging endpoint first, never
   the old source endpoint for migration tests.
@@ -787,6 +911,10 @@ Provision `/etc/web-amr/web-amr.env` through the secret manager, root-owned mode
 The application does **not** automatically load a `.env` file. Systemd's
 EnvironmentFile syntax is not a shell script; provision/quote it accordingly
 and do not `source` it into an interactive shell.
+
+Render Linux configuration/environment files as UTF-8 without a BOM and with
+LF line endings, not PowerShell 5.1's default UTF-16 file output. Preserve SQL
+files in the encoding produced by the verified native exporter.
 
 Configure a root-owned PHP-FPM service drop-in at
 `/etc/systemd/system/php8.4-fpm.service.d/web-amr.conf`:
@@ -809,6 +937,25 @@ The pool keeps `clear_env = yes` and explicitly forwards required variables.
 Both the pool and Apache configuration must set `CI_ENV=production`; the entry
 point otherwise defaults to development. Production fails closed if the URL,
 required database variables, or writable session directory are missing.
+
+Environment files apply to the FPM **master service**, so changing them requires
+the coordinated service restart, not merely an Apache reload. Make sure every
+referenced pool variable is set, including optional application values explicitly
+listed in the pool template. Do not forward query-test/export administrator
+credentials into the web pool. Service-wide environment changes can affect
+other pools hosted by the same service.
+
+These examples switch a **single deployment pool sequentially** from staging
+to production. For simultaneous staging and production, use independently
+provisioned FPM services/containers and separate sockets/environments/session
+directories. Two pools forwarding the same service-wide `AMR_DB_*` variables
+do not provide separate database credentials by themselves.
+
+Validate report/upload capacity in FPM: `memory_limit`, `max_execution_time`,
+`request_terminate_timeout`, upload/post limits, Apache request/proxy timeouts,
+and database packet/temporary-space limits must fit the accepted workload.
+The template's upload sizes and worker count are starting values, not load-test
+results. Use scoped, measured limits rather than unlimited defaults.
 
 Run FPM configuration validation with the same protected environment available
 to the master service. For a systemd administrator, an example validation is:
@@ -835,13 +982,36 @@ Render `deploy/apache.conf.example` into an Apache site file. Replace:
 - `@@CERTIFICATE_PATH@@`, `@@PRIVATE_KEY_PATH@@`: valid certificate/key paths.
 - `@@PHP_FPM_SOCKET@@`: the dedicated socket chosen above.
 
+For initial staging, `@@HOSTNAME@@`, `AMR_BASE_URL`, the browser test hostname,
+and the TLS certificate must all match the staging hostname. Re-render/revalidate
+these settings for the approved production hostname at cutover; do not assume
+a staging certificate or Host header setting also covers production.
+
 Provision the certificate through the approved CA/DNS workflow before TLS
 validation. Restrict staging access to administrators. The template retains
 `/amr/`, redirects HTTP to HTTPS, disables `.htaccess` overrides, denies internal
-source/writable directories and backups, and executes only `index.php`.
+source/writable directories and backups, and selects a PHP handler for the
+filename `index.php`. Its current `<Files>` match includes nested files of that
+name, so it is not an exact-path front-controller restriction.
 Consequently, the repository's old-host `.htaccess` redirect is not used.
 Do not enable mod_php or an unrelated global PHP handler that bypasses this
 front-controller policy.
+
+At this review, the working tree contained only the root `index.php`. Repeat
+that inventory on the sanitized deployed artifact, including vendor assets.
+Remove unneeded nested entry points or tighten the handler scope before public
+activation, and verify direct PHP/path-info/case-variant requests cannot expose
+source or execute unintended scripts. The template has not been tested on a
+live Apache server here. See Apache's
+[filesystem container matching rules](https://httpd.apache.org/docs/2.4/sections.html).
+
+Stage restriction must be effective **before** the first service reload: a
+missing public DNS record or a `curl --resolve` test does not prevent access
+through the IP address or a client-supplied Host header. Use approved firewall,
+VPN, or server-side access restrictions. Review other enabled/default virtual
+hosts and aliases so they cannot expose the same release or private workspace.
+Also verify `/amr` redirects to `/amr/` and front-controller PATH_INFO works
+through the actual FPM socket/alias mapping.
 
 After rendering the site to `/secure/amr-rendered/apache.conf`, install and
 enable the configuration, then test the **enabled** site:
@@ -870,7 +1040,7 @@ Before public DNS changes, test using a restricted DNS/hosts override that
 preserves the intended hostname and validates its certificate. Example:
 
 ```bash
-curl --resolve amr.example.com:443:192.0.2.20 --head https://amr.example.com/amr/index.php/login
+curl --resolve amr-staging.example.com:443:192.0.2.20 --head https://amr-staging.example.com/amr/index.php/login
 ```
 
 Replace both example values. Do not use `--insecure` to bypass TLS failures.
@@ -1018,13 +1188,17 @@ Record results and resolve every failure:
   python3 /opt/web-amr-src/deploy/database_export.py inventory --defaults-file /secure/amr/destination.cnf --database meter_reading --mysql /usr/bin/mariadb --mysqldump /usr/bin/mariadb-dump --output /secure/amr/destination-audit-RELEASE_ID
   ```
 
-- Confirm the destination reports MariaDB 11.8.x. Run actual SELECT/INSERT/
-  UPDATE/DELETE and session-lock operations using the runtime account, not just
-  the offline fake-transport test. Exercise report aggregation/date queries
+- Confirm the destination reports MariaDB 11.8.x. On **staging**, run actual
+  SELECT/INSERT/UPDATE/DELETE and session-lock operations using the staging
+  runtime account, not just the offline fake-transport test. Exercise report aggregation/date queries
   with both empty data and representative disposable readings; compare expected
   results against a controlled source baseline. Check SQL modes, explicit
   timestamp defaults, text sorting/collations, filename/table-name case, and
   query plans/index use where performance matters.
+- Keep synthetic accounts/readings and destructive CRUD exercises confined to
+  disposable staging. After the fresh production restore, perform only the
+  approved production smoke workflows; do not seed test history or improvise
+  cleanup against production tables/triggers.
 - Compare native source/destination schema definitions: types, nullability,
   defaults, keys, FK actions, engines, collations, views, routines, triggers,
   events, and AUTO_INCREMENT behavior. Normalize only approved differences,
@@ -1046,6 +1220,10 @@ Record results and resolve every failure:
 - Verify HTTP denial for `.git`, application/system source, SQL/backup files,
   and direct PHP execution in writable directories. Confirm unauthorized users
   cannot obtain another user's generated report.
+- Verify the restricted query-test account has no permanent writes or
+  cross-database access through broad grants/roles; test authentication from the
+  same TCP/socket/host path used by the process. The validator's name guard is
+  not a substitute for database-enforced least privilege.
 
 Do not expose legacy backup/vendor demonstration endpoints. Existing MD5
 password hashes are retained for compatibility; do not treat the PHP upgrade
@@ -1073,3 +1251,14 @@ writes before discarding or redirecting them.
 After acceptance, revoke temporary export/import credentials and retain or
 expire private bundles through the approved backup policy. No step in this
 guide requires deleting or altering the original server's records.
+
+## Final go/no-go record
+
+Before proceeding beyond private staging, obtain named approval for: a
+recoverable source backup; complete schema and approved setup snapshot; tested
+11.8 restore and verified application connection settings; representative
+queries/browser/report downloads; deployed-file/Apache access controls;
+fresh production restore without test readings; and monitoring/rollback
+ownership. Export preparation may proceed only after its own prerequisites
+are met; passing offline tests or this document review alone is not a
+production migration approval.
