@@ -1865,6 +1865,10 @@ fwrite($fp, $data);
 	/*DOWNLOAD*/
 	public function meter_location_sap_report_download()
 	{
+	// File ownership is not recorded by this legacy endpoint. Disable it until
+	// reports can be delivered through an authenticated ownership check.
+	show_error('This report download is temporarily unavailable.', 403);
+	return;
 	
 	if($this->session->userdata('currently_logged_in_as')!=''){
 

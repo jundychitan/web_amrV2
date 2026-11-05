@@ -12,6 +12,11 @@
 <VirtualHost *:443>
     ServerName @@HOSTNAME@@
     DocumentRoot /srv/web-amr/empty
+    # Route the legacy gateway URL through the front controller before PHP
+    # execution restrictions are applied; no standalone PHP file is exposed.
+    RewriteEngine On
+    RewriteRule ^/http_post_server\.php$ /amr/index.php/http_post_server.php [PT,L,QSA]
+    RewriteRule ^/amr/http_post_server\.php$ /amr/index.php/http_post_server.php [PT,L]
     SSLEngine on
     SSLCertificateFile @@CERTIFICATE_PATH@@
     SSLCertificateKeyFile @@PRIVATE_KEY_PATH@@

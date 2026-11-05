@@ -16,6 +16,7 @@ clear_env = yes
 security.limit_extensions = .php
 env[CI_ENV] = production
 env[AMR_BASE_URL] = $AMR_BASE_URL
+env[AMR_ALLOW_HTTP_IP] = $AMR_ALLOW_HTTP_IP
 env[AMR_SESSION_PATH] = $AMR_SESSION_PATH
 env[AMR_DB_HOST] = $AMR_DB_HOST
 env[AMR_DB_PORT] = $AMR_DB_PORT

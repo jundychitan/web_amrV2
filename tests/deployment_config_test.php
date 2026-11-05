@@ -29,7 +29,7 @@ function requires_configuration($callback) {
     }
     throw new RuntimeException('Missing/unsafe configuration was accepted.');
 }
-$keys = array('AMR_BASE_URL', 'AMR_SESSION_PATH', 'AMR_DB_HOST', 'AMR_DB_NAME',
+$keys = array('AMR_BASE_URL', 'AMR_ALLOW_HTTP_IP', 'AMR_SESSION_PATH', 'AMR_DB_HOST', 'AMR_DB_NAME',
     'AMR_DB_USER', 'AMR_DB_PASSWORD', 'AMR_DB_PORT', 'AMR_DB_CHARSET', 'AMR_DB_COLLATION');
 $saved = array();
 foreach ($keys as $key) {
@@ -51,6 +51,13 @@ try {
     check_deployment($config['cookie_secure'] === TRUE, 'HTTPS cookies');
     check_deployment($config['cookie_httponly'] === TRUE, 'HTTP-only cookies');
     check_deployment($config['composer_autoload'] === FALSE, 'no nonexistent vendor autoload');
+    putenv('AMR_BASE_URL=http://192.0.2.1/amr/');
+    requires_configuration(function () use ($root) { production_config($root); });
+    putenv('AMR_ALLOW_HTTP_IP=1');
+    $config = production_config($root);
+    check_deployment($config['cookie_secure'] === FALSE, 'explicit HTTP IP cookies');
+    putenv('AMR_BASE_URL=http://example.invalid/amr/');
+    requires_configuration(function () use ($root) { production_config($root); });
     putenv('AMR_DB_HOST=localhost');
     putenv('AMR_DB_NAME=disposable_test');
     putenv('AMR_DB_USER=disposable_user');
