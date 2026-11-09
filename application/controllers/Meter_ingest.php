@@ -2,6 +2,15 @@
 defined('BASEPATH') OR exit('No direct script access allowed');
 
 class Meter_ingest extends CI_Controller {
+    public function check_time() {
+        $this->output->set_content_type('text/plain', 'utf-8');
+        if ($this->input->method(TRUE) !== 'GET') {
+            $this->output->set_status_header(405)->set_output('GET required');
+            return;
+        }
+        $this->output->set_output(date('Y-m-d H:i:s'));
+    }
+
     public function index() {
         $this->output->set_content_type('text/plain', 'utf-8');
         if ($this->input->method(TRUE) !== 'POST') {
@@ -17,6 +26,7 @@ class Meter_ingest extends CI_Controller {
                 is_array($query) ? $query : array(), is_array($post) ? $post : array()
             ));
         } catch (InvalidArgumentException $error) {
+            log_message('error', 'Meter reading rejected: '.$error->getMessage());
             $this->output->set_status_header(400)->set_output('Invalid meter reading');
             return;
         }

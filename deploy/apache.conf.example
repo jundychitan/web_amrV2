@@ -15,6 +15,7 @@
     # Route the legacy gateway URL through the front controller before PHP
     # execution restrictions are applied; no standalone PHP file is exposed.
     RewriteEngine On
+    RewriteRule ^/check_time\.php$ /amr/index.php/check_time.php [PT,L,QSA]
     RewriteRule ^/http_post_server\.php$ /amr/index.php/http_post_server.php [PT,L,QSA]
     RewriteRule ^/amr/http_post_server\.php$ /amr/index.php/http_post_server.php [PT,L]
     SSLEngine on

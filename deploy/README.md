@@ -1,5 +1,12 @@
 # Step-by-step deployment: PHP 8.4 and MariaDB 11.8
 
+> **Operating record, 2026-11-09:** The test deployment and the MARIGOLD VPN
+> deployment described in [section 12](#12-deployment-and-vpn-operating-record)
+> are already running. They currently use HTTP by explicit request and do not
+> satisfy all the HTTPS, authenticated-report, or acceptance gates below. The
+> following guide remains the target procedure; the operating record describes
+> what was actually done and the remaining differences.
+
 ## Scope and current verification
 
 Deploy the tested working tree from `E:\GitHub\web_amrV2`, not the original
@@ -1262,3 +1269,194 @@ fresh production restore without test readings; and monitoring/rollback
 ownership. Export preparation may proceed only after its own prerequisites
 are met; passing offline tests or this document review alone is not a
 production migration approval.
+
+## 12. Deployment and VPN operating record
+
+This is a snapshot of the deployment as observed on **2026-11-09**, not a
+claim that all production acceptance checks above passed. Do not commit
+passwords, private keys, database connection files, session cookies, or
+ThousandEyes enrollment strings. Addresses and names below are operational
+configuration; protect this document appropriately when sharing it.
+
+### Systems and access
+
+- The application is this **CodeIgniter `web_amrV2`** project. It is not the
+  separate Laravel `camr_robinsons` project; their schemas are incompatible.
+- Test: `172.104.42.220`, HTTP app `http://172.104.42.220/amr/`.
+- MARIGOLD production-side host: `172.16.47.155`, Debian 13, hostname
+  `mamasitas` (`mamasitas.workgroup` locally). The app is at
+  `http://172.16.47.155/amr/`; it is reachable only where routing and firewall
+  policy allow access to that private IP. It is not a public internet address.
+- The production-side SSH login is `amr`. Administrative work was performed
+  with an independently authenticated root shell. Verify SSH host keys through
+  the administrator's trusted channel before connecting; do not disable host
+  key checking or copy passwords into scripts or this document.
+- TeamViewer was discussed as an attended remote-support option, but it was
+  not required for this deployment. A remote session may expose the other
+  machine's desktop and credentials; use the organization's approved access
+  controls and keep the remote operator available for prompts.
+
+### Cisco Secure Client / VPN
+
+On the operator's Mac, Cisco Secure Client / AnyConnect connects to the VPN
+server `mama-sitas-twbnkdbzpgc.dynamic-m.com:443`. Obtain the VPN credentials
+and access policy from the organization's administrator; do not record them
+here. An active VPN gives this Mac a route to the private server, but it does
+not by itself prove that a separate gateway device has a route to that server.
+
+The installer also offered a **ThousandEyes Endpoint Agent** component. Its
+connection string is an enrollment value from a ThousandEyes administrator;
+our VPN hostname is not that value. ThousandEyes is not required merely to
+enter the VPN hostname in the AnyConnect VPN component. Leave it unconfigured
+or unselected unless the organization requires it.
+
+The Mac initially reported that the VPN service was unavailable. In macOS
+**System Settings → General → Login Items & Extensions → Allow in the
+Background**, the **Cisco Secure Client – AnyConnect VPN Service** switch was
+off. Enabling it required the Mac user's authorization. After the service was
+running, quitting and reopening Cisco Secure Client showed **Ready to
+connect**. The client subsequently showed **Connected** to the VPN hostname;
+the Mac's default route used a VPN interface. This confirms that operator's
+connection only, not access from all devices.
+
+### Production runtime and release
+
+- Apache, MariaDB **11.8.6**, and PHP **8.4.27 FPM** were active at verification.
+  PHP 8.3.36 was also installed for the separate Laravel investigation; this
+  application requires PHP 8.4 and uses the dedicated 8.4 pool. PHP 8.4 became
+  the default CLI alternative. Avoid assuming that an unqualified `php` will
+  always use a particular version; use `php8.4` for this application.
+- PHP 8.3 packages were installed from the approved signed Sury repository;
+  PHP 8.4 packages were installed from Debian's repositories. Composer and
+  Git are installed, although this CodeIgniter release does not require
+  Composer. Existing Debian APT sources used HTTP and an update stalled;
+  temporary HTTPS sources were used during installation. An administrator
+  should make sure regular package updates work through approved sources.
+- The deployed runtime was copied from the test server after excluding
+  reports, uploads, logs, cache contents, and credential files. Its archive
+  checksum at transfer was
+  `410f9fa83e2d2c97313504ac66d5b713c8cc77569e8013dafed5199e038c1f7c`.
+  The active path is `/srv/web-amr/current`, pointing to
+  `/srv/web-amr/releases/test-reference-20261109`. The gateway time-check fix
+  was later applied to that release in place, so it is no longer an immutable
+  copy of the original archive. The corresponding local source changes must
+  be retained in future releases.
+- Root owns application code; `www-data` can read it. Writable directories are
+  the release's `reports`, `meter_upload_list`, `application/logs`, and
+  `application/cache`, plus `/var/lib/web-amr/sessions`. The environment file
+  `/etc/web-amr/web-amr.env` is root-owned mode `0600` and loaded by the
+  PHP 8.4 FPM systemd drop-in. The pool is
+  `/etc/php/8.4/fpm/pool.d/web-amr.conf` and listens on
+  `/run/php/web-amr.sock`. It sets `CI_ENV=production`, clears the environment
+  except for the explicit `AMR_*` list, and sets `Asia/Manila` timezone.
+- The enabled Apache site is `/etc/apache2/sites-available/001-web-amr.conf`.
+  It maps `/amr/` and the gateway routes through `index.php`, denies direct
+  access to application/system files and generated reports, and redirects
+  `/` and `/amr` to `/amr/`. A local-only staging site was disabled after
+  checks. `/check_time.php` was added to production after initial activation;
+  the test server did not have this route when compared.
+- HTTP by IP was explicitly requested. `AMR_BASE_URL` is the production IP
+  URL and `AMR_ALLOW_HTTP_IP=1`; this makes the production configuration accept
+  an HTTP IPv4 URL and disables the Secure cookie flag. Passwords, sessions,
+  and readings therefore travel without HTTPS encryption. Move to a managed
+  hostname and valid TLS certificate when available, and remove the HTTP
+  exception. The gateway receiver has no device authentication and can accept
+  writes from any client that can reach it; network restrictions and a device
+  authentication design should be reviewed before wider access.
+
+### Database and setup data
+
+MariaDB binds to `127.0.0.1:3306`. The production database is `meter_reading`;
+`amr_test_mariadb118` is separate staging. The test-server schema-only export
+was restored into staging and then production. Database defaults were
+`utf8mb4` / `utf8mb4_uca1400_ai_ci`. The restore contained 27 base tables,
+three views, and one trigger. A fresh export from production matched the
+source schema after the intentional definer mapping, excluding dump timestamps
+and host comments. Views were queried successfully.
+
+The source views and trigger used a test-server definer. Production maps the
+four object definers to the locked `web_amr_definer@localhost` account with
+only the table privileges required for those objects. `web_amr_app@localhost`
+has `SELECT`, `INSERT`, `UPDATE`, and `DELETE` on `meter_reading`; the separate
+`web_amr_stage@localhost` has the same data privileges only on the staging
+schema. Neither runtime account was granted schema DDL privileges. Some legacy
+report code contains `ALTER TABLE` calls, so those paths require separate
+review and cannot be assumed to work with the restricted account.
+
+The root-only client option files are under `/secure/web-amr/`; the runtime
+PHP-FPM environment is separate. Do not print these files or pass their
+passwords on command lines. The production `admin` record was copied from the
+test server on request, with its active-session fields cleared. Its login and
+logout were tested; the test session lock was released. Other setup records
+were not bulk imported. Users subsequently configured production-side data.
+As of 2026-11-09 22:13 Manila time, there was one user, one site, one meter,
+one gateway, one meter-model entry, 29 historical rows and two live rows. These
+are time-specific observations, not desired seed counts or a reason to modify
+existing records. Production uses an `Elite440` / `elite440.cfg` entry;
+verification that the actual gateway has and uses that file remains open.
+
+### Gateway protocol and troubleshooting
+
+The reading endpoint is:
+
+```text
+POST http://172.16.47.155/http_post_server.php
+```
+
+The `/amr/http_post_server.php` path is also routed. The endpoint accepts
+URL-encoded fields in the POST body or the query string; POST body fields take
+precedence. Required fields are `save_to_meter_data` (`1` historical, `0`
+live), `location`, `meter_id`, and `datetime` in `YYYY-MM-DD HH:MM:SS` form.
+The parser handles the gateway's `vpha_*` / `ipha_*` aliases, maps missing
+optional numeric fields to zero, and treats short demand-time placeholders
+such as `20` as unavailable (`NULL`). Successful requests return
+`OK, YYYY-MM-DD HH:MM:SS` using the server's Manila time. A GET returns 405;
+invalid input returns 400. A 500 indicates a server-side storage failure. The
+schema has no unique historical-reading key, so retries may create duplicates.
+
+`GET http://172.16.47.155/check_time.php` returns the server time in
+`YYYY-MM-DD HH:MM:SS` format; other methods receive 405. The time route and
+field-name-only validation diagnostics were tested in staging and then
+explicitly approved for production. Those local changes were uncommitted when
+this record was written.
+
+When a gateway reported “failed to connect,” production access logs showed
+that some POSTs reached the endpoint and returned 200, while others returned
+400. On 2026-11-09 at 22:05, rejected requests were logged as
+`Invalid numeric field: wh_total`; the diagnostics deliberately do not log the
+field value. Later, at 22:10, two POSTs returned 200 and the historical count
+increased. This does not prove that every later reading is valid. Obtain the
+exact rejected field value from the gateway operator before changing validation;
+do not silently coerce an invalid energy reading to zero.
+
+The same device also requested `/rtu/index.php/rtu/rtu_check_update/...` and
+received 403. Those gateway configuration/update endpoints are not implemented
+by this deployment; in particular, do not turn on remote-command or reset
+endpoints based on assumptions. Their protocol, authorization, configuration
+file delivery, and state changes need separate review. Direct generated report
+downloads remain blocked pending an authenticated, ownership-checked delivery
+solution.
+
+Useful read-only checks, executed on the production host by an authorized
+administrator:
+
+```bash
+systemctl is-active apache2 php8.4-fpm mariadb
+php8.4 -v
+apache2ctl configtest
+# Endpoint availability; GET on the POST endpoint is expected to return 405.
+curl -i http://127.0.0.1/check_time.php
+curl -i http://127.0.0.1/http_post_server.php
+# Inspect only necessary recent diagnostics; access logs may contain full
+# query strings and should be treated as sensitive.
+tail -n 50 /srv/web-amr/current/application/logs/log-$(date +%F).php
+```
+
+When using loopback for Apache checks, send the production `Host` header if the
+server selects a different virtual host, or request the VPN IP directly. Do
+not send synthetic valid readings to production as a health check: they create
+real data. Use a disposable staging database and remove only known synthetic
+records. The previous production gateway code, route, and Apache configuration
+were saved under `/secure/web-amr/rollback-gateway-20261109`; assess concurrent
+traffic and preserve new readings before any rollback. A database backup and a
+reconciliation plan remain necessary before a cutover or destructive recovery.
