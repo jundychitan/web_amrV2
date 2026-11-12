@@ -17,6 +17,7 @@
     RewriteEngine On
     RewriteRule ^/check_time\.php$ /amr/index.php/check_time.php [PT,L,QSA]
     RewriteRule ^/http_post_server\.php$ /amr/index.php/http_post_server.php [PT,L,QSA]
+    RewriteRule ^/rtu/index\.php/rtu/rtu_check_update/([0-9A-Fa-f:]{17})/(get_update_csv|get_content_csv|reset_update_csv|get_update_location|get_content_location|reset_update_location)$ /amr/index.php/rtu/rtu_check_update/$1/$2 [PT,L,QSA]
     RewriteRule ^/amr/http_post_server\.php$ /amr/index.php/http_post_server.php [PT,L]
     SSLEngine on
     SSLCertificateFile @@CERTIFICATE_PATH@@
