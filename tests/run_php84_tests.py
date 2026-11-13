@@ -49,6 +49,7 @@ def main():
                        "php84_mysqli_test.php", "php84_spreadsheet_test.php",
                        "session_lock_test.php", "deployment_config_test.php",
                        "meter_enrollment_test.php",
+                       "gateway_enrollment_test.php",
                        "meter_upload_page_test.php",
                        "mariadb118_policy_test.php"):
             run([binary, "-d", "error_reporting=32767", str(ROOT / "tests" / script)])

@@ -86,4 +86,29 @@ require APPPATH.'views/admin/navigation-admin.php';
 $navigation = ob_get_clean();
 page_check(strpos($navigation, '/amr/index.php/admin/meter_upload">Meter Upload</a>') !== FALSE,
     'Maintenance entry points to new page');
-print('PASS: '.$assertions." Meter Upload page assertions (no application database).\n");
+$controller->load->views = array();
+$controller->admin_model->calls = 0;
+$controller->session->role = 'BA';
+$controller->gateway_upload();
+page_check(!$controller->admin_model->calls && !$controller->load->views, 'gateway page is Admin-only');
+$controller->session->role = 'Admin';
+$controller->input->verb = 'POST';
+$controller->gateway_upload();
+page_check(!$controller->load->views && $controller->output->status === 405, 'gateway page is GET-only');
+$controller->input->verb = 'GET';
+$controller->gateway_upload();
+page_check(isset($controller->load->views['admin/gateway_upload']), 'gateway page renders in Admin layout');
+$sites = $controller->load->views['admin/gateway_upload']['sites'];
+ob_start();
+require APPPATH.'views/admin/gateway_upload.php';
+$gateway_html = ob_get_clean();
+page_check(strpos($gateway_html, '&lt;script&gt;bad&lt;/script&gt;') !== FALSE
+    && strpos($gateway_html, '<script>bad</script>') === FALSE, 'gateway site labels escaped');
+page_check(strpos($gateway_html, 'data-entity="gateway"') !== FALSE
+    && strpos($gateway_html, '/amr/index.php/api/gateways/import/token') !== FALSE
+    && strpos($gateway_html, 'Import Gateways') !== FALSE, 'gateway endpoint and shared UI configured');
+page_check(strpos($gateway_html, 'mac_addr') !== FALSE && strpos($gateway_html, 'LAN') !== FALSE,
+    'gateway schema mapping and defaults explained');
+page_check(strpos($navigation, '/amr/index.php/admin/gateway_upload">Gateway Upload</a>') !== FALSE,
+    'Maintenance gateway menu entry');
+print('PASS: '.$assertions." upload page assertions (no application database).\n");

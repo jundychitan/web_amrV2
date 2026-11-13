@@ -26,7 +26,7 @@ class Element {
     dispatch(event) { this.listeners[event]({ preventDefault() {} }); }
 }
 
-function setup(hasSites = true) {
+function setup(hasSites = true, mode = 'meter') {
     const ids = ['form', 'site', 'file', 'preview', 'import', 'view', 'message', 'results', 'summary', 'rows'];
     const elements = Object.fromEntries(ids.map(id => [id, new Element()]));
     elements.site.options = hasSites ? [{ text: 'Choose' }, { text: 'Test Site' }] : [{ text: 'Choose' }];
@@ -34,7 +34,8 @@ function setup(hasSites = true) {
     elements.site.value = '7';
     elements.file.files = [{ name: 'meters.xlsx', size: 123 }];
     elements.form.attributes = {
-        'data-token-url': '/token', 'data-import-url': '/import', 'data-meter-url': '/meters'
+        'data-token-url': '/token', 'data-import-url': '/import', 'data-meter-url': '/meters',
+        'data-entity': mode
     };
     elements.preview.disabled = true;
     elements.import.disabled = true;
@@ -163,6 +164,28 @@ async function main() {
     const empty = setup(false);
     assert.equal(empty.elements.preview.disabled, true);
     assert.equal(empty.elements.site.disabled, true);
-    console.log('PASS: Meter Upload UI preview/import, CSRF, safe rendering, confirmation, invalidation and error states.');
+    const gateways = setup(true, 'gateway');
+    const gatewayReport = report({
+        rows: [{ sheet: 'Asbuilt', row: 1, rtu_sn_number: 'GW-01', mac_addr: 'aa:bb:cc:dd:ee:01',
+            rtu_physical_location: malicious, phone_no_or_ip_address: '192.0.2.10',
+            idf_number: 'IDF', switch_name: 'SW', idf_port: '01', status: 'ready', errors: [], warnings: [] }]
+    });
+    await preview(gateways, gatewayReport);
+    assert.match(gateways.elements.message.textContent, /Import Gateways/);
+    assert.equal(gateways.elements.summary.textContent.includes('Unmatched'), false);
+    const gatewayCells = gateways.elements.rows.children[0].children[0].children;
+    assert.equal(gatewayCells[1].textContent, 'GW-01');
+    assert.equal(gatewayCells[3].textContent, malicious, 'gateway locations use safe text');
+    gateways.response({ csrf_token: 'fixture-token' });
+    gateways.response(Object.assign({}, gatewayReport, { dry_run: false, inserted: 1 }));
+    gateways.elements.import.dispatch('click');
+    await flush();
+    assert.match(gateways.confirms[0], /new gateway/);
+    assert.match(gateways.elements.message.textContent, /gateway\(s\) inserted/);
+    assert.equal(gateways.elements.view.href, '/meters/7', 'gateway management link has only site argument');
+    await preview(gateways, Object.assign({}, gatewayReport, { invalid: 1 }), 422);
+    assert.match(gateways.elements.message.textContent, /No gateways were saved/);
+    assert.equal(gateways.elements.import.disabled, true);
+    console.log('PASS: Meter/Gateway Upload UI preview/import, CSRF, safe rendering, confirmation, invalidation and error states.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

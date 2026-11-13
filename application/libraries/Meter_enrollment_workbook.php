@@ -2,6 +2,7 @@
 defined('BASEPATH') OR exit('No direct script access allowed');
 
 class Meter_enrollment_workbook {
+    protected $sheet_names = array('Asbuilt');
     const MAX_BYTES = 5242880;
     const MAX_ROWS = 5000;
     const MAX_COLUMNS = 64;
@@ -17,7 +18,7 @@ class Meter_enrollment_workbook {
         'meter multiplier' => 'meter_multiplier'
     );
 
-    private function normalize($value) {
+    protected function normalize($value) {
         return strtolower(trim(preg_replace('/\s+/u', ' ', $value)));
     }
 
@@ -121,17 +122,19 @@ class Meter_enrollment_workbook {
             throw new InvalidArgumentException('Too many worksheets.');
         }
         $selected = NULL;
-        foreach ($info as $sheet) {
-            if ($sheet['worksheetName'] === 'Asbuilt') {
-                $selected = $sheet;
-                break;
+        foreach ($this->sheet_names as $name) {
+            foreach ($info as $sheet) {
+                if ($sheet['worksheetName'] === $name) {
+                    $selected = $sheet;
+                    break 2;
+                }
             }
         }
         if ($selected === NULL && count($info) === 1) {
             $selected = $info[0];
         }
         if ($selected === NULL) {
-            throw new InvalidArgumentException('Use an Asbuilt sheet or a single-sheet workbook.');
+            throw new InvalidArgumentException('Use a '.implode(' or ', $this->sheet_names).' sheet or a single-sheet workbook.');
         }
         if ($selected['totalRows'] > self::MAX_ROWS || $selected['totalColumns'] > self::MAX_COLUMNS) {
             throw new InvalidArgumentException('Worksheet exceeds 5000 rows or 64 columns.');
@@ -145,7 +148,7 @@ class Meter_enrollment_workbook {
         }
     }
 
-    private function value($cell, $formatted = TRUE) {
+    protected function value($cell, $formatted = TRUE) {
         $value = $cell->getDataType() === PHPExcel_Cell_DataType::TYPE_FORMULA
             ? $cell->getOldCalculatedValue() : $cell->getValue();
         if ($value instanceof PHPExcel_RichText) {

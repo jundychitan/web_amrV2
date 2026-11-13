@@ -25,6 +25,8 @@
 <li role="separator" class="divider"></li> 
 <li><a href="<?php echo base_url(); ?>index.php/admin/rtu_management">Gateway Management</a></li>
 <li role="separator" class="divider"></li> 
+<li><a href="<?php echo base_url(); ?>index.php/admin/gateway_upload">Gateway Upload</a></li>
+<li role="separator" class="divider"></li>
 
 <li><a href="<?php echo base_url(); ?>index.php/admin/meter_model_management">Meter Model Management</a></li>
 <li role="separator" class="divider"></li> 

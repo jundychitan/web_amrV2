@@ -14,6 +14,9 @@
     var validated = null;
     var busy = false;
     var hasSites = site.options.length > 1;
+    var gatewayMode = form.getAttribute('data-entity') === 'gateway';
+    var noun = gatewayMode ? 'gateway' : 'meter';
+    var plural = noun + 's';
 
     function notify(text, kind) {
         message.className = 'alert alert-' + kind;
@@ -49,15 +52,24 @@
         summary.textContent = (report.dry_run ? 'Preview' : 'Import') +
             ' — Total: ' + report.total + ' | Eligible: ' + report.would_insert +
             ' | Inserted: ' + report.inserted + ' | Skipped: ' + report.skipped +
-            ' | Invalid: ' + report.invalid + ' | Unmatched gateways: ' + report.unmatched_gateways;
+            ' | Invalid: ' + report.invalid +
+            (gatewayMode ? '' : ' | Unmatched gateways: ' + report.unmatched_gateways);
         var fragment = document.createDocumentFragment();
         report.rows.forEach(function (item) {
             var row = document.createElement('tr');
             row.className = item.errors.length ? 'danger' : item.warnings.length ? 'warning' : '';
             cell(row, item.sheet + ' / ' + item.row);
-            cell(row, item.meter_name);
-            cell(row, item.gateway_serial);
-            cell(row, item.rtu_sn_number_id);
+            if (gatewayMode) {
+                cell(row, item.rtu_sn_number);
+                cell(row, item.mac_addr);
+                cell(row, item.rtu_physical_location);
+                cell(row, item.phone_no_or_ip_address);
+                cell(row, [item.idf_number, item.switch_name, item.idf_port].join(' / '));
+            } else {
+                cell(row, item.meter_name);
+                cell(row, item.gateway_serial);
+                cell(row, item.rtu_sn_number_id);
+            }
             cell(row, item.status === 'ready' ? 'Eligible (not saved)' : item.status);
             cell(row, item.errors.concat(item.warnings).join(' '));
             fragment.appendChild(row);
@@ -100,8 +112,8 @@
                 return;
             }
             var label = site.options[site.selectedIndex].text;
-            if (!window.confirm('Import ' + validated.count + ' new meter(s) into ' + label +
-                '? Review all warnings first. Existing meters will not be overwritten.')) {
+            if (!window.confirm('Import ' + validated.count + ' new ' + noun + '(s) into ' + label +
+                '? Review all warnings first. Existing ' + plural + ' will not be overwritten.')) {
                 return;
             }
         }
@@ -109,7 +121,8 @@
         view.hidden = true;
         busy = true;
         controls();
-        notify(dryRun ? 'Validating workbook. No meters are being saved…' : 'Importing meters. Please wait…', 'info');
+        notify(dryRun ? 'Validating workbook. No ' + plural + ' are being saved…'
+            : 'Importing ' + plural + '. Please wait…', 'info');
         try {
             var token = await request(form.getAttribute('data-token-url'));
             if (typeof token.csrf_token !== 'string' || !token.csrf_token) {
@@ -125,22 +138,23 @@
             if (!Array.isArray(report.rows)) { throw new Error('Unexpected import results. Please validate again.'); }
             render(report);
             if (report.invalid) {
-                notify('Validation failed. No meters were saved. Correct the listed errors and preview again.', 'danger');
+                notify('Validation failed. No ' + plural + ' were saved. Correct the listed errors and preview again.', 'danger');
             } else if (dryRun && report.would_insert > 0) {
                 validated = { file: selectedFile, site: selectedSite, count: report.would_insert };
-                notify('Preview complete. No meters were saved. Review warnings, then click Import Meters.', 'warning');
+                notify('Preview complete. No ' + plural + ' were saved. Review warnings, then click Import ' +
+                    (gatewayMode ? 'Gateways.' : 'Meters.'), 'warning');
             } else if (dryRun) {
-                notify('Preview complete. No new meters to import; existing meters were skipped.', 'info');
+                notify('Preview complete. No new ' + plural + ' to import; existing ' + plural + ' were skipped.', 'info');
             } else {
-                notify('Import complete. ' + report.inserted + ' meter(s) inserted; ' + report.skipped + ' skipped.', 'success');
-                view.href = form.getAttribute('data-meter-url') + '/' + encodeURIComponent(selectedSite) + '/0';
+                notify('Import complete. ' + report.inserted + ' ' + noun + '(s) inserted; ' + report.skipped + ' skipped.', 'success');
+                view.href = form.getAttribute('data-meter-url') + '/' + encodeURIComponent(selectedSite) + (gatewayMode ? '' : '/0');
                 view.hidden = false;
             }
         } catch (error) {
             results.hidden = true;
             notify((error.message || 'Request failed.') + (dryRun
-                ? ' No meters were saved by this preview.'
-                : ' If the connection failed, the import may have completed. Preview again before retrying; existing meters will be skipped.'), 'danger');
+                ? ' No ' + plural + ' were saved by this preview.'
+                : ' If the connection failed, the import may have completed. Preview again before retrying; existing ' + plural + ' will be skipped.'), 'danger');
         } finally {
             busy = false;
             controls();

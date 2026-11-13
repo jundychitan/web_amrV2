@@ -57,7 +57,7 @@ class TestDb {
     public function trans_commit() { return $this->pdo->commit(); }
     public function trans_rollback() { return $this->pdo->rollBack(); }
     public function trans_status() { return TRUE; }
-    public function query($sql, $args) {
+    public function query($sql, $args = array()) {
         $sql = str_replace(' FOR UPDATE', '', $sql);
         $statement = $this->pdo->prepare($sql);
         $statement->execute($args);
@@ -94,13 +94,14 @@ if ($path === '/test-login') {
     print 'fixture';
     return;
 }
-require APPPATH.'controllers/Meter_import.php';
-$controller = new Meter_import();
+$class = strpos($path, '/api/gateways/') === 0 ? 'Gateway_import' : 'Meter_import';
+require APPPATH.'controllers/'.$class.'.php';
+$controller = new $class();
 $controller->session = new TestSession();
 $controller->input = new TestInput();
 $controller->output = new TestOutput();
 $controller->load = new TestLoader($controller);
-if ($path === '/api/meters/import/token') { $controller->token(); }
+if (substr($path, -6) === '/token') { $controller->token(); }
 else { $controller->index(); }
 """
 
@@ -117,6 +118,17 @@ def workbook(serial="000123", multiplier="", extra=""):
     for col, value in zip("ABCDEFG", ["Floor", serial, "Tenant", "3P", "elite.cfg", "", multiplier]):
         sheet += f'<c r="{col}3" t="inlineStr"><is><t>{value}</t></is></c>'
     return sheet + f"</row></sheetData>{extra}</worksheet>"
+
+
+def gateway_workbook(ip="192.0.2.11"):
+    sheet = '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>'
+    fields = [("Gateway serial no", "GW-02"), ("Gateway mac address", "AA-BB-CC-DD-EE-02"),
+              ("Gateway Location", "Gateway Floor"), ("Gateway IP address", ip),
+              ("IDF Number", "IDF-1"), ("Switch", "SW-1"), ("Port number", "01")]
+    for row, (label, value) in enumerate(fields, 1):
+        sheet += (f'<row r="{row}"><c r="B{row}" t="inlineStr"><is><t>{label}</t></is></c>'
+                  f'<c r="C{row}" t="inlineStr"><is><t>{value}</t></is></c></row>')
+    return sheet + "</sheetData></worksheet>"
 
 
 def write_book(path, sheet):
@@ -150,23 +162,29 @@ xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
 
 def seed(path):
     sql = (ROOT / "database/meter_reading_db_schema.sql").read_text()
-    block = re.search(r"CREATE TABLE IF NOT EXISTS `meter_details` \((.*?)\n\)", sql, re.S)[1]
-    columns = []
-    for name, definition in re.findall(r"^\s*`([^`]+)` (.+)$", block, re.M):
-        if name == "id":
-            columns.append("id INTEGER PRIMARY KEY")
-            continue
-        kind = "INTEGER" if definition.startswith("int(") else "REAL" if definition.startswith("double") else "TEXT"
-        nullable = " NOT NULL" if "NOT NULL" in definition else ""
-        default = re.search(r"DEFAULT ('[^']*'|NULL|[0-9]+)", definition)
-        columns.append(f"`{name}` {kind}{nullable}" + (" DEFAULT " + default[1] if default else ""))
     with closing(sqlite3.connect(path)) as db:
-        db.execute("CREATE TABLE meter_details (" + ",".join(columns) + ")")
+        gateway_seed = {}
+        for table in ("meter_details", "meter_rtu"):
+            block = re.search(r"CREATE TABLE IF NOT EXISTS `" + table + r"` \((.*?)\n\)", sql, re.S)[1]
+            columns = []
+            for name, definition in re.findall(r"^\s*`([^`]+)` (.+)$", block, re.M):
+                if name == "id":
+                    columns.append("id INTEGER PRIMARY KEY")
+                    continue
+                kind = "INTEGER" if definition.startswith("int(") else "REAL" if definition.startswith("double") else "TEXT"
+                nullable = " NOT NULL" if "NOT NULL" in definition else ""
+                default = re.search(r"DEFAULT ('[^']*'|NULL|[0-9]+)", definition)
+                columns.append(f"`{name}` {kind}{nullable}" + (" DEFAULT " + default[1] if default else ""))
+                if table == "meter_rtu":
+                    gateway_seed[name] = 0 if kind == "INTEGER" else ""
+            db.execute("CREATE TABLE " + table + " (" + ",".join(columns) + ")")
+        gateway_seed.update(id=42, rtu_sn_number="GW-01", rtu_site_id=1, mac_addr="aa:bb:cc:dd:ee:01")
+        db.execute("INSERT INTO meter_rtu (" + ",".join(gateway_seed) + ") VALUES (" +
+                   ",".join("?" for _ in gateway_seed) + ")", list(gateway_seed.values()))
+        db.commit()
         db.executescript("""
 CREATE TABLE meter_site (id INTEGER, site_code TEXT, company_no INTEGER, business_entity TEXT);
 INSERT INTO meter_site VALUES (1,'SITE',7,'ENTITY');
-CREATE TABLE meter_rtu (id INTEGER, rtu_sn_number TEXT, rtu_site_id INTEGER);
-INSERT INTO meter_rtu VALUES (42,'GW-01',1);
 CREATE TABLE meter_model_config (id INTEGER, config_file TEXT, meter_model TEXT);
 INSERT INTO meter_model_config VALUES (8,'elite.cfg','Elite');
 """)
@@ -219,14 +237,14 @@ def main():
                 fixture = temp / "meters.xlsx"
                 write_book(fixture, workbook())
 
-                def upload(dry="1", csrf=token):
+                def upload(dry="1", csrf=token, route="/api/meters/import"):
                     boundary = "amr-test-boundary"
                     data = (f"--{boundary}\r\nContent-Disposition: form-data; name=\"site_id\"\r\n\r\n1\r\n"
                             f"--{boundary}\r\nContent-Disposition: form-data; name=\"dry_run\"\r\n\r\n{dry}\r\n"
                             f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"meters.xlsx\"\r\n"
                             "Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\r\n\r\n").encode()
                     data += fixture.read_bytes() + f"\r\n--{boundary}--\r\n".encode()
-                    status, body = request("/api/meters/import", data, {
+                    status, body = request(route, data, {
                         "Content-Type": f"multipart/form-data; boundary={boundary}", "X-CSRF-Token": csrf})
                     return status, json.loads(body)
 
@@ -254,7 +272,30 @@ meter_name_addressable,meter_multiplier,meter_model_id FROM meter_details""").fe
                 assert upload()[0] == 400
                 with closing(sqlite3.connect(temp / "test.sqlite")) as db:
                     assert db.execute("SELECT COUNT(*) FROM meter_details").fetchone()[0] == 1
-                print("PASS: isolated HTTP multipart import, CSRF, dry run, insert, retry, validation and archive limits.")
+                status, body = request("/api/gateways/import/token")
+                gateway_token = json.loads(body)["csrf_token"]
+                assert status == 200 and gateway_token != token
+                write_book(fixture, gateway_workbook())
+                assert upload(csrf=token, route="/api/gateways/import")[0] == 403
+                status, report = upload(csrf=gateway_token, route="/api/gateways/import")
+                assert status == 200 and report["would_insert"] == 1 and report["inserted"] == 0, (status, report)
+                status, report = upload("0", csrf=gateway_token, route="/api/gateways/import")
+                assert status == 200 and report["inserted"] == 1, (status, report)
+                with closing(sqlite3.connect(temp / "test.sqlite")) as db:
+                    assert db.execute("""SELECT rtu_sn_number,mac_addr,connection_type,ip_netmask,ip_gateway,
+rtu_server_ip,gateway_description,rtu_site_id,rtu_site_name,switch_name,idf_port,
+update_rtu,update_rtu_location,update_rtu_ssh,update_rtu_force_lp
+FROM meter_rtu WHERE rtu_sn_number='GW-02'""").fetchone() == (
+                        "GW-02", "aa:bb:cc:dd:ee:02", "LAN", "n/a", "n/a", "n/a", "Gateway Floor",
+                        1, "SITE", "SW-1", "01", 0, 0, 0, 0)
+                status, report = upload("0", csrf=gateway_token, route="/api/gateways/import")
+                assert status == 200 and report["skipped"] == 1
+                write_book(fixture, gateway_workbook("bad-ip"))
+                status, report = upload("0", csrf=gateway_token, route="/api/gateways/import")
+                assert status == 422 and report["invalid"] == 1
+                with closing(sqlite3.connect(temp / "test.sqlite")) as db:
+                    assert db.execute("SELECT COUNT(*) FROM meter_rtu").fetchone()[0] == 2
+                print("PASS: isolated Meter/Gateway HTTP imports, CSRF, defaults, dry run, insert, retry, validation and archive limits.")
             finally:
                 process.terminate()
                 process.wait(timeout=10)
