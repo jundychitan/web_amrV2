@@ -28,6 +28,8 @@
 
 <li><a href="<?php echo base_url(); ?>index.php/admin/meter_model_management">Meter Model Management</a></li>
 <li role="separator" class="divider"></li> 
+<li><a href="<?php echo base_url(); ?>index.php/admin/meter_upload">Meter Upload</a></li>
+<li role="separator" class="divider"></li>
 <li><a href="<?php echo base_url(); ?>index.php/admin/user_management">User Management</a></li>
 <li role="separator" class="divider"></li> 
 </ul>

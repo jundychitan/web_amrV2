@@ -13,6 +13,25 @@ class Admin extends CI_Controller {
 	}
 	
 	/*PAGE LOAD HERE*/
+	public function meter_upload()
+	{
+		if ($this->session->userdata('currently_logged_in_as') !== 'Admin') {
+			redirect('Login/invalid');
+			return;
+		}
+		$this->output->set_header('Cache-Control: no-store');
+		if ($this->input->method(TRUE) !== 'GET') {
+			$this->output->set_header('Allow: GET')->set_status_header(405);
+			return;
+		}
+		$data['title'] = 'Meter Upload';
+		$data['sites'] = $this->admin_model->site_list();
+		$this->load->view('templates/header', $data);
+		$this->load->view('admin/navigation-admin');
+		$this->load->view('admin/meter_upload', $data);
+		$this->load->view('templates/footer');
+	}
+
 	public function account_settings()
 	{
 	if($this->session->userdata('currently_logged_in_as')=='Admin'){
