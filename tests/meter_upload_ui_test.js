@@ -104,6 +104,7 @@ async function main() {
     assert.equal(app.calls[1].options.credentials, 'same-origin');
     assert.equal(el.import.disabled, false);
     assert.equal(el.results.hidden, false);
+    assert.equal(el.message.hidden, false, 'preview feedback remains visible');
     assert.equal(el.rows.children[0].children[0].children[1].textContent, malicious, 'results stay literal text');
     app.cancel(true);
     el.import.dispatch('click');
@@ -126,6 +127,7 @@ async function main() {
     el.site.dispatch('change');
     assert.equal(el.import.disabled, true, 'site change invalidates preview');
     assert.equal(el.results.hidden, true);
+    assert.equal(el.message.hidden, true, 'selection changes do not show explainer banners');
     await preview(app);
     el.file.dispatch('change');
     assert.equal(el.import.disabled, true, 'file change invalidates preview');

@@ -107,8 +107,15 @@ page_check(strpos($gateway_html, '&lt;script&gt;bad&lt;/script&gt;') !== FALSE
 page_check(strpos($gateway_html, 'data-entity="gateway"') !== FALSE
     && strpos($gateway_html, '/amr/index.php/api/gateways/import/token') !== FALSE
     && strpos($gateway_html, 'Import Gateways') !== FALSE, 'gateway endpoint and shared UI configured');
-page_check(strpos($gateway_html, 'mac_addr') !== FALSE && strpos($gateway_html, 'LAN') !== FALSE,
-    'gateway schema mapping and defaults explained');
+foreach (array($html, $gateway_html) as $upload_html) {
+    page_check(strpos($upload_html, 'help-block') === FALSE
+        && strpos($upload_html, 'Existing gateways') === FALSE
+        && strpos($upload_html, 'Existing meters') === FALSE
+        && strpos($upload_html, 'Choose a site and workbook') === FALSE
+        && strpos($upload_html, 'aria-describedby=') === FALSE, 'static explanations removed');
+    page_check(strpos($upload_html, 'role="status" aria-live="polite" hidden></div>') !== FALSE,
+        'idle status hidden while live notifications remain available');
+}
 page_check(strpos($navigation, '/amr/index.php/admin/gateway_upload">Gateway Upload</a>') !== FALSE,
     'Maintenance gateway menu entry');
 print('PASS: '.$assertions." upload page assertions (no application database).\n");

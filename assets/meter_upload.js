@@ -19,6 +19,7 @@
     var plural = noun + 's';
 
     function notify(text, kind) {
+        message.hidden = false;
         message.className = 'alert alert-' + kind;
         message.textContent = text;
     }
@@ -36,7 +37,8 @@
         results.hidden = true;
         view.hidden = true;
         rows.textContent = '';
-        notify('Selection changed. Validate / Preview before importing.', 'info');
+        message.textContent = '';
+        message.hidden = true;
         controls();
     }
 
