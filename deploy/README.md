@@ -1460,3 +1460,71 @@ records. The previous production gateway code, route, and Apache configuration
 were saved under `/secure/web-amr/rollback-gateway-20261109`; assess concurrent
 traffic and preserve new readings before any rollback. A database backup and a
 reconciliation plan remain necessary before a cutover or destructive recovery.
+
+## 13. Guarded Git-based updates on the test server
+
+`deploy/git_deploy.py` implements a **selected-file update**, not `git pull` in
+the live release. The root-owned installed command is
+`/usr/local/sbin/web-amr-deploy`. Git fetches and database-free source tests run
+as the non-login `web-amr-deploy` account, using a private checkout at
+`/opt/web-amr-deploy/work/repo`; the existing `/opt/web-amr-src` is untouched.
+Configuration, baseline metadata, audit results, and backups live under the
+root-only `/var/lib/web-amr-deploy`.
+
+Run these commands **on 172.104.42.220 as root**:
+
+```bash
+web-amr-deploy status
+web-amr-deploy check
+web-amr-deploy update
+web-amr-deploy rollback BACKUP_ID
+```
+
+`check` fetches and pins `origin/main`, previews the changed paths, verifies
+managed live-file hashes, and runs offline PHP 8.4 and isolated RTU tests.
+It does not install application files or reload services. `update` repeats
+those checks, backs up affected paths, preserves file ownership/modes, applies
+only permitted runtime changes, reloads FPM, and checks services and read-only
+HTTP behavior. If the fetched revision is already the recorded baseline, it
+does not create a backup or reload services. Only committed, pushed changes
+are available to this server; local working-tree edits are not deployed.
+
+Changes to database/schema, application configuration/routes, Apache/FPM
+templates, root entry points, archived content, symlinks, or unsupported paths
+stop the automatic update for a separate reviewed deployment. Generated data,
+secrets, reports, sessions, uploads, logs, cache, tests, and deployment tooling
+are never copied into the web root. Documentation/test/tooling-only commits can
+advance the recorded source baseline without copying those files. Installed
+deployment tooling does not automatically replace itself from Git.
+
+Initial `init FULL_REVIEWED_COMMIT` is an audit only and refuses to overwrite an
+existing baseline. Files matching the source become managed; missing or
+different source files remain unmanaged and are listed in `baseline-audit.json`.
+These differences are not silently overwritten or certified as deployed.
+Later changes to an unmanaged existing path require manual reconciliation.
+
+Backups are under `/var/lib/web-amr-deploy/backups/BACKUP_ID`. Automatic rollback
+restores affected files after an ordinary post-update failure. Explicit
+rollback verifies that the most recent applied update has not acquired later
+file drift. If a process or machine is interrupted mid-update, `status`
+prints a recovery backup ID; use `rollback` with that exact ID. Recovery refuses
+unexpected edits rather than overwriting them. This is a multi-file in-place
+update with per-file atomic replacement, **not** an atomic full-release switch;
+use an agreed maintenance window for changes that cannot tolerate mixed versions.
+Backups restore files only, never database records.
+
+Node.js is required by the upload UI regression test when
+`assets/meter_upload.js` changes. If it is absent, such an update stops with an
+explicit prerequisite; unchanged JavaScript is not re-tested without Node.
+The PHP/RTU tests use PHP 8.4 and disposable fixtures, never real gateway resets
+or readings. HTTP checks are not a substitute for authenticated browser
+acceptance. Clone access is currently public HTTPS without credentials; do not
+embed a token/password if repository access policy later changes.
+
+One-time installation is performed from a reviewed, checksummed bundle using
+`deploy/install_git_deploy.py`; it refuses existing account/installation paths.
+It installs the command and tests, clones privately, audits a reviewed baseline,
+and runs `status`/`check` without copying live application code. The installer
+is intentionally specific to the observed test host and must not be used on
+MARIGOLD or another release without a new review. It does not install Node or
+other OS packages and must not be rerun blindly after a partial installation.
