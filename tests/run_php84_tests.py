@@ -48,10 +48,12 @@ def main():
         for script in ("php84_bootstrap_test.php", "php84_framework_test.php",
                        "php84_mysqli_test.php", "php84_spreadsheet_test.php",
                        "session_lock_test.php", "deployment_config_test.php",
+                       "meter_enrollment_test.php",
                        "mariadb118_policy_test.php"):
             run([binary, "-d", "error_reporting=32767", str(ROOT / "tests" / script)])
         run([binary, "-d", "error_reporting=32767",
              str(ROOT / "tests/php84_spreadsheet_test.php"), "Classes"])
+        run([sys.executable, str(ROOT / "tests/meter_import_http_test.py"), "--php", binary])
         run([sys.executable, "-m", "unittest", "discover", "-s",
              str(ROOT / "tests"), "-p", "test_*.py", "-v"])
         print("PASS: all offline PHP 8.4 compatibility checks.")
