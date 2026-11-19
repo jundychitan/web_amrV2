@@ -173,9 +173,15 @@ function amr118_main(array $arguments): int {
                     amr118_assert(is_string($token) && strlen($token) === 64);
                 });
                 if (is_string($token)) {
-                    $results->check('temporary.lock-competing-login', fn() => amr118_assert($lock->acquire($id) === FALSE));
+                    $results->check('temporary.lock-competing-login', function () use ($lock, $id, $token) {
+                        $second = $lock->acquire($id);
+                        amr118_assert(Session_lock_model::ENFORCE_SINGLE_SESSION
+                            ? $second === FALSE : is_string($second) && $second !== $token);
+                    });
                     $results->check('temporary.lock-refresh', fn() => amr118_assert($lock->refresh($id, $token) === TRUE));
-                    $results->check('temporary.lock-wrong-token', fn() => amr118_assert($lock->refresh($id, str_repeat('a', 64)) === FALSE));
+                    $results->check('temporary.lock-wrong-token', fn() => amr118_assert(
+                        $lock->refresh($id, str_repeat('a', 64))
+                            === !Session_lock_model::ENFORCE_SINGLE_SESSION));
                     $results->check('temporary.lock-release', fn() => amr118_assert($lock->release($id, $token) === TRUE));
                     $results->check('temporary.lock-reacquire', fn() => amr118_assert(is_string($lock->acquire($id))));
                 } else {

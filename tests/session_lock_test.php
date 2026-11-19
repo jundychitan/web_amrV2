@@ -26,6 +26,11 @@ require dirname(__DIR__).'/application/models/Session_lock_model.php';
 require dirname(__DIR__).'/application/hooks/Session_lock.php';
 require dirname(__DIR__).'/application/controllers/Login.php';
 
+// Retain coverage for restoring the old policy without enabling it in production.
+class EnforcedSessionLockModel extends Session_lock_model {
+    const ENFORCE_SINGLE_SESSION = TRUE;
+}
+
 class TestResult {
     private $rows;
     public function __construct($rows) { $this->rows = $rows; }
@@ -38,6 +43,7 @@ class TestDatabase {
     public $fail = FALSE;
     public $throw = FALSE;
     public $zero_changed_rows = FALSE;
+    public $queries = 0;
     private $affected = 0;
 
     public function __construct($path = ':memory:')
@@ -51,6 +57,7 @@ class TestDatabase {
     public function affected_rows() { return $this->affected; }
     public function query($sql, $bindings)
     {
+        $this->queries++;
         if ($this->throw) { throw new RuntimeException('Simulated database exception'); }
         if ($this->fail) { return FALSE; }
         $statement = $this->pdo->prepare($sql);
@@ -104,8 +111,14 @@ function setup($db = NULL)
     $ci->load = new TestLoader();
     $ci->form_validation = new TestValidation();
     $ci->login_model = new TestCredentials();
-    $ci->session_lock_model = new Session_lock_model();
+    $ci->session_lock_model = new EnforcedSessionLockModel();
     $GLOBALS['test_ci'] = $ci;
+    return $ci;
+}
+function setup_unrestricted()
+{
+    $ci = setup();
+    $ci->session_lock_model = new Session_lock_model();
     return $ci;
 }
 function seed($db)
@@ -152,6 +165,86 @@ if (isset($argv[1]) && $argv[1] === '--claim') {
     exit;
 }
 
+// Production policy: stale lock rows never block independent browser sessions.
+check(Session_lock_model::ENFORCE_SINGLE_SESSION === FALSE,
+    'production single-session enforcement is temporarily disabled');
+$ci = setup_unrestricted();
+seed($ci->db);
+$ci->db->pdo->exec("UPDATE user_tb SET active_session_hash = '".str_repeat('1', 64).
+    "', active_session_activity = 100000 WHERE id = 1");
+$stored_lock = $ci->db->pdo->query('SELECT * FROM user_tb WHERE id = 1')->fetch(PDO::FETCH_ASSOC);
+$ci->login_model->rows = array(array(
+    'id' => 1, 'user_name' => 'test', 'user_real_name' => 'Test User',
+    'user_type' => 'Admin', 'user_list_src' => 'AMR', 'user_access' => ''
+));
+$first_login = new Login();
+expect_redirect(function () use ($first_login) { $first_login->login_action(); }, 'admin/welcome');
+$first_browser = $ci->session;
+$first_token = $first_browser->userdata('active_session_token');
+check($first_browser->regenerated, 'unrestricted login still regenerates the session ID');
+check(is_string($first_token) && strlen($first_token) === 64,
+    'unrestricted login retains the private-token caller contract');
+$ci->session = new TestSession();
+$ci->load = new TestLoader();
+$second_login = new Login();
+expect_redirect(function () use ($second_login) { $second_login->login_action(); }, 'admin/welcome');
+$second_browser = $ci->session;
+check($second_browser->userdata('user_id') === 1, 'second browser authenticates the same account');
+check($second_browser->userdata('active_session_token') !== $first_token,
+    'independent browsers retain independent tokens');
+check($first_browser->userdata('currently_logged_in_as') === 'Admin',
+    'second login does not revoke the first browser');
+$first_login->login_action();
+check($first_browser->userdata('active_session_token') === $first_token,
+    'repeat login in an authenticated browser still preserves that browser');
+$ci->db->fail = TRUE;
+$first_login->logout();
+check($first_browser->destroyed && $first_browser->data === array(),
+    'logout succeeds even when lock storage is unavailable');
+check(!$second_browser->destroyed && $second_browser->userdata('user_id') === 1,
+    'logging out one browser does not log out another');
+$unrestricted_hook = new Session_lock();
+$unrestricted_hook->enforce();
+check(!$second_browser->destroyed, 'remaining browser passes the session hook');
+$second_login->logout();
+check($second_browser->destroyed && $second_browser->data === array(),
+    'second browser can also log out independently');
+check($ci->db->queries === 0, 'unrestricted login, hook and logout execute no lock queries');
+check($ci->db->pdo->query('SELECT * FROM user_tb WHERE id = 1')->fetch(PDO::FETCH_ASSOC) === $stored_lock,
+    'disabled policy leaves existing lock rows untouched');
+$ci->db->pdo->exec('UPDATE user_tb SET active_session_activity = NULL WHERE id = 1');
+check(is_string($ci->session_lock_model->acquire(1)),
+    'an orphaned lock with a missing activity timestamp cannot block login');
+check($ci->db->queries === 0, 'orphaned locks are ignored without a lock query');
+
+$ci = setup_unrestricted();
+$ci->db->pdo->exec('CREATE TABLE user_tb (id INTEGER PRIMARY KEY)');
+$ci->db->throw = TRUE;
+$unrestricted = $ci->session_lock_model;
+check(is_string($unrestricted->acquire(1)), 'missing lock columns do not prevent session creation');
+check($unrestricted->refresh(1, NULL) === TRUE, 'pre-existing sessions without tokens remain usable');
+check($unrestricted->refresh(1, 'expired-token') === TRUE, 'stale token ownership is not enforced');
+check($unrestricted->release(1, str_repeat('a', 64)) === TRUE,
+    'logout does not require lock-table availability');
+authenticate($ci, NULL);
+$unrestricted_hook->enforce();
+check(!$ci->session->destroyed, 'session hook accepts existing authenticated sessions without tokens');
+$ci->session = new TestSession();
+$unrestricted_hook->enforce();
+check(!$ci->session->destroyed && $ci->session->data === array(),
+    'disabling lock checks never grants anonymous users authentication');
+check($ci->db->queries === 0, 'disabled policy never touches unavailable lock storage');
+$ci->form_validation->valid = FALSE;
+$invalid_login = new Login();
+$invalid_login->login_action();
+check($ci->session->data === array(), 'invalid credentials remain unauthenticated with locking disabled');
+$ci->form_validation->valid = TRUE;
+$invalid_login->login_action();
+check($ci->session->data === array(), 'a missing credential match still cannot authenticate');
+check(strpos($ci->load->views['login_view']['login_error'], 'Incorrect username/password') !== FALSE,
+    'normal credential errors remain intact');
+
+// Original enabled-policy model, hook, controller and concurrency regressions.
 $ci = setup();
 seed($ci->db);
 $model = $ci->session_lock_model;

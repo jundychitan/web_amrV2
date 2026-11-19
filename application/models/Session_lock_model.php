@@ -3,6 +3,9 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 
 class Session_lock_model extends CI_Model {
 
+    // Temporary policy: allow independent browser sessions for the same account.
+    // Set TRUE to restore the retained database-backed single-session checks.
+    const ENFORCE_SINGLE_SESSION = FALSE;
     const INACTIVITY_SECONDS = 7200;
 
     // Returns the private browser token, FALSE if occupied, or NULL on failure.
@@ -13,6 +16,10 @@ class Session_lock_model extends CI_Model {
         } catch (Exception $exception) {
             log_message('error', 'Unable to generate an account session token.');
             return NULL;
+        }
+
+        if ( ! static::ENFORCE_SINGLE_SESSION) {
+            return $token;
         }
 
         $sql = 'UPDATE '.$this->db->dbprefix('user_tb').'
@@ -33,6 +40,10 @@ class Session_lock_model extends CI_Model {
     // NULL means a database failure; FALSE means missing/expired ownership.
     public function refresh($user_id, $token)
     {
+        if ( ! static::ENFORCE_SINGLE_SESSION) {
+            return TRUE;
+        }
+
         if ( ! $this->valid_token($token)) {
             return FALSE;
         }
@@ -58,6 +69,10 @@ class Session_lock_model extends CI_Model {
 
     public function release($user_id, $token)
     {
+        if ( ! static::ENFORCE_SINGLE_SESSION) {
+            return TRUE;
+        }
+
         if ( ! $this->valid_token($token)) {
             return TRUE;
         }
