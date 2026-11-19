@@ -1525,6 +1525,53 @@ One-time installation is performed from a reviewed, checksummed bundle using
 `deploy/install_git_deploy.py`; it refuses existing account/installation paths.
 It installs the command and tests, clones privately, audits a reviewed baseline,
 and runs `status`/`check` without copying live application code. The installer
-is intentionally specific to the observed test host and must not be used on
-MARIGOLD or another release without a new review. It does not install Node or
-other OS packages and must not be rerun blindly after a partial installation.
+uses explicit reviewed profiles: `--profile test` (the default) and
+`--profile marigold`. Each profile checks its expected release; MARIGOLD also
+checks the `mamasitas` hostname. It does not install Node or other OS packages
+and must not be rerun blindly after a partial installation.
+
+### MARIGOLD setup and baseline verification
+
+For MARIGOLD, connect as `amr@172.16.47.155`, then elevate with `su -`.
+The same private checkout, command, account, and state paths are used on that
+host, independently of the test server. The installer must be invoked with
+`--profile marigold`; it never deploys the missing upload features during setup.
+
+The reviewed starting baseline is
+`7b22699c9007d7588819f431c6265febc71fbe25`, matching the observed RTU rollout,
+not the newer test-server source revision. Full baseline auditing still
+records only matching files as managed and reports differences for review.
+
+`web-amr-deploy verify` runs tests for the recorded source baseline and checks
+the current app/login, reading receiver GET rejection, and time endpoint.
+It does not fetch newer source, deploy files, or reset real gateways. The test
+profile retains its original health checks; MARIGOLD's base profile does not
+require missing upload-token APIs. Those checks are added automatically when
+the corresponding controllers have been deployed.
+
+`check` and `update` still target `origin/main`. For a host still at the RTU
+baseline, they deliberately refuse the protected route change and unsupported
+root-path changes rather than silently marking newer source as deployed.
+Reconcile that catch-up through the reviewed operation below. Subsequent normal
+updates use the newly recorded baseline and retain the protected-path guards.
+A successful baseline `verify` is not proof of parity with main.
+Installing this tooling on MARIGOLD does not update the already installed
+deployment tooling on the test server.
+
+### Explicitly reviewed route catch-up
+
+`web-amr-deploy reviewed-update APPROVAL_JSON` is a separate, tightly scoped
+operation for a reviewed catch-up from the RTU baseline. The approval file must
+be root-owned mode `0600` and pin the exact baseline commit, fetched target
+commit, current route SHA-256, target-source route SHA-256, and the known
+already-absent root artifact. Any unexpected drift or upstream advancement
+stops the operation. It does not allow arbitrary protected paths or deletions.
+
+Only the four meter/gateway import routes are inserted; all existing routing
+bytes are preserved. The merged route becomes explicitly managed and is
+included in the normal backup manifest. `rollback BACKUP_ID` restores it,
+removes newly added runtime files, and restores the previous source baseline.
+Ordinary `check` and `update` still refuse protected configuration changes.
+Health checks automatically require unauthenticated import-token requests to
+return 401 once the corresponding controllers exist, while retaining the time
+and reading receiver checks configured on MARIGOLD.

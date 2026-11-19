@@ -1,23 +1,63 @@
 #!/usr/bin/python3
-"""One-time installer for the existing test host; never replaces live app code."""
+"""One-time installer for explicitly reviewed hosts; never replaces live app code."""
 
+import argparse
 import hashlib
 import json
 import os
 from pathlib import Path
 import shutil
+import socket
 import subprocess
 import sys
 import zipfile
 
 
-BASELINE = "e606559ba53daffbf3ee9c447f4b0c1097983f7b"
 REMOTE = "https://github.com/jundychitan/web_amrV2.git"
 BASE = Path("/opt/web-amr-deploy")
 STORAGE = Path("/var/lib/web-amr-deploy")
 COMMAND = Path("/usr/local/sbin/web-amr-deploy")
 USER = "web-amr-deploy"
 MEMBERS = {"deploy/git_deploy.py", "tests/test_git_deploy.py"}
+PROFILES = {
+    "test": {
+        "baseline": "e606559ba53daffbf3ee9c447f4b0c1097983f7b",
+        "release": "/srv/web-amr/releases/20261105-e854afe",
+        "url": "http://172.104.42.220",
+        "initial_check": "check",
+    },
+    "marigold": {
+        "baseline": "7b22699c9007d7588819f431c6265febc71fbe25",
+        "release": "/srv/web-amr/releases/test-reference-20261109",
+        "hostname": "mamasitas",
+        "url": "http://172.16.47.155",
+        "initial_check": "verify",
+        "health_checks": [
+            ["/amr/", 200], ["/amr/index.php/login", 200],
+            ["/http_post_server.php", 405], ["/check_time.php", 200],
+        ],
+    },
+}
+PREREQUISITES = (
+    "/usr/bin/git", "/usr/bin/python3", "/usr/bin/php8.4", "/usr/sbin/runuser",
+    "/usr/sbin/useradd", "/usr/bin/systemctl", "/usr/sbin/nologin",
+)
+
+
+def select_profile(name, release, hostname):
+    profile = PROFILES[name]
+    if str(release) != profile["release"]:
+        raise RuntimeError("Active release does not match selected installation profile")
+    if profile.get("hostname") and hostname.split(".")[0] != profile["hostname"]:
+        raise RuntimeError("Hostname does not match selected installation profile")
+    return profile
+
+
+def check_prerequisites():
+    # su shells may omit /usr/sbin from PATH even though these tools are installed.
+    for executable in PREREQUISITES:
+        if not Path(executable).is_file() or not os.access(executable, os.X_OK):
+            raise RuntimeError("Missing prerequisite: " + executable)
 
 
 def linux_source(data):
@@ -41,10 +81,13 @@ def main():
 
     if os.geteuid() != 0:
         raise RuntimeError("Use the root deployment operator")
-    if len(sys.argv) != 3:
-        raise RuntimeError("Usage: installer BUNDLE EXPECTED_SHA256")
-    bundle = Path(sys.argv[1])
-    if hashlib.sha256(bundle.read_bytes()).hexdigest() != sys.argv[2]:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("bundle", type=Path)
+    parser.add_argument("sha256")
+    parser.add_argument("--profile", choices=tuple(PROFILES), default="test")
+    args = parser.parse_args()
+    bundle = args.bundle
+    if hashlib.sha256(bundle.read_bytes()).hexdigest() != args.sha256:
         raise RuntimeError("Bundle checksum mismatch")
     for path in (BASE, STORAGE, COMMAND):
         if path.exists() or path.is_symlink():
@@ -55,12 +98,9 @@ def main():
         pass
     else:
         raise RuntimeError("Deployment account already exists; review rather than reuse")
-    for executable in ("git", "python3", "php8.4", "runuser", "useradd", "systemctl"):
-        if not shutil.which(executable):
-            raise RuntimeError("Missing prerequisite: " + executable)
+    check_prerequisites()
     release = Path("/srv/web-amr/current").resolve(strict=True)
-    if str(release) != "/srv/web-amr/releases/20261105-e854afe":
-        raise RuntimeError("Active release changed; re-review baseline")
+    profile = select_profile(args.profile, release, socket.gethostname())
     with zipfile.ZipFile(bundle) as archive:
         if set(archive.namelist()) != MEMBERS:
             raise RuntimeError("Unexpected bundle members")
@@ -91,9 +131,11 @@ def main():
         "storage": str(STORAGE), "user": USER,
         "repo": str(BASE / "work/repo"), "work": str(BASE / "work"),
         "current": "/srv/web-amr/current", "releases": "/srv/web-amr/releases",
-        "remote": REMOTE, "url": "http://172.104.42.220",
+        "remote": REMOTE, "url": profile["url"],
         "web_gid": grp.getgrnam("www-data").gr_gid,
     }
+    if "health_checks" in profile:
+        config["health_checks"] = profile["health_checks"]
     (STORAGE / "config.json").write_text(json.dumps(config, indent=2) + "\n")
     os.chmod(STORAGE / "config.json", 0o600)
     environment = {
@@ -109,12 +151,14 @@ def main():
         "-m", "unittest", "discover", "-s", tooling / "tests", "-p", "test_git_deploy.py", "-v",
         env=environment, cwd=BASE / "work")
     print("AUDIT initial baseline (no app files will be changed)", flush=True)
-    run(COMMAND, "init", BASELINE)
+    run(COMMAND, "init", profile["baseline"])
     run(COMMAND, "status")
-    print("CHECK fetched source and Linux regression suite", flush=True)
-    run(COMMAND, "check")
+    print("CHECK Linux regression suite using", profile["initial_check"], flush=True)
+    run(COMMAND, profile["initial_check"])
     print("INSTALLATION_OK", COMMAND, flush=True)
     print("No application files, configuration, sessions, or database records were changed.")
+    if args.profile == "marigold":
+        print("Newer main has not been deployed. Use check to preview pending protected changes.")
 
 
 if __name__ == "__main__":

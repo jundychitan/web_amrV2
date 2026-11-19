@@ -16,6 +16,29 @@ SPEC.loader.exec_module(deploy)
 
 
 class PolicyTests(unittest.TestCase):
+    def test_route_exception_never_allows_other_configuration(self):
+        with self.assertRaises(deploy.DeploymentError):
+            deploy.safe_path("/tmp/release", "application/config/database.php", reviewed_routes=True)
+        with self.assertRaises(deploy.DeploymentError):
+            deploy.safe_path("/tmp/release", deploy.ROUTES_PATH)
+
+    def test_default_health_checks_are_unchanged(self):
+        self.assertEqual(tuple(deploy.health_checks({})), deploy.DEFAULT_HEALTH_CHECKS)
+        self.assertIn(("/amr/index.php/api/gateways/import/token", 401),
+                      deploy.health_checks({}))
+
+    def test_marigold_health_checks_do_not_require_upload_features(self):
+        checks = [["/amr/", 200], ["/amr/index.php/login", 200],
+                  ["/http_post_server.php", 405], ["/check_time.php", 200]]
+        self.assertEqual(deploy.health_checks({"health_checks": checks}), checks)
+        self.assertFalse(any("import" in name for name, _ in checks))
+
+    def test_health_checks_cannot_invoke_gateway_actions(self):
+        for checks in ([], [["/rtu/reset_update_csv", 200]],
+                       [["/check_time.php?reset=1", 200]], [["/amr/", True]]):
+            with self.subTest(checks=checks), self.assertRaises(deploy.DeploymentError):
+                deploy.health_checks({"health_checks": checks})
+
     def test_runtime_paths(self):
         for name in ("application/controllers/New.php", "application/views/admin/page.php",
                      "assets/upload.js", "system/core/Loader.php", "Classes/PHPExcel.php"):
@@ -71,6 +94,7 @@ class WorkflowTests(unittest.TestCase):
         self.workflow.command = mock.Mock(return_value=b"")
         self.workflow.reload = mock.Mock()
         self.workflow.health = mock.Mock()
+        self.workflow.verify_static = mock.Mock()
         self.chown = mock.patch.object(deploy.os, "chown", create=True).start()
         self.addCleanup(mock.patch.stopall)
         self.old = b"old code\n"
@@ -95,6 +119,138 @@ class WorkflowTests(unittest.TestCase):
         self.path.write_bytes(b"server-specific change")
         with self.assertRaises(deploy.DeploymentError):
             deploy.validate_delta([self.change()], self.state["managed"], self.release)
+
+    def reviewed_fixture(self):
+        current = (b"<?php\n$route['default_controller'] = \"login\";\n"
+                   b"$route['check_time\\.php'] = 'meter_ingest/check_time';\n"
+                   b"$route['404_override'] = '';\n\n"
+                   b"$route['rtu/custom'] = 'rtu/preserved';\n")
+        source = (b"<?php\n" + b"\n".join(
+            ("$route['{}'] = '{}';".format(key, value)).encode()
+            for key, value in deploy.IMPORT_ROUTES) + b"\n")
+        path = self.release / deploy.ROUTES_PATH
+        path.parent.mkdir(exist_ok=True, parents=True)
+        path.write_bytes(current)
+        approval = {
+            "baseline": self.state["commit"], "target": "b" * 40,
+            "route_before_sha256": deploy.sha(current),
+            "route_source_sha256": deploy.sha(source),
+            "absent_deleted": deploy.LEGACY_ARTIFACT,
+        }
+        return path, current, source, approval
+
+    def test_route_merge_preserves_every_existing_byte(self):
+        path, current, source, approval = self.reviewed_fixture()
+        merged = deploy.merge_import_routes(current, source)
+        additions = b"\n".join(
+            ("$route['{}'] = '{}';".format(key, value)).encode()
+            for key, value in deploy.IMPORT_ROUTES) + b"\n"
+        self.assertEqual(merged.replace(additions, b"", 1), current)
+        self.assertEqual(path.read_bytes(), current)
+
+    def test_route_merge_rejects_existing_or_conflicting_routes(self):
+        path, current, source, approval = self.reviewed_fixture()
+        with self.assertRaises(deploy.DeploymentError):
+            deploy.merge_import_routes(current + b"// api/meters/import\n", source)
+        with self.assertRaises(deploy.DeploymentError):
+            deploy.merge_import_routes(current, source.replace(b"meter_import/index", b"unsafe/index"))
+
+    def test_approval_rejects_stale_or_broader_scope(self):
+        path, current, source, approval = self.reviewed_fixture()
+        deploy.validate_approval(self.state, "b" * 40, approval)
+        for key, value in (("baseline", "c" * 40), ("target", "c" * 40),
+                           ("absent_deleted", "application/config/database.php"),
+                           ("route_before_sha256", "not a hash"), ("extra", "not allowed")):
+            with self.subTest(key=key), self.assertRaises(deploy.DeploymentError):
+                deploy.validate_approval(self.state, "b" * 40, dict(approval, **{key: value}))
+
+    def test_reviewed_prepare_accepts_exact_merge_and_absent_artifact(self):
+        path, current, source, approval = self.reviewed_fixture()
+        self.workflow.git = mock.Mock(side_effect=[
+            b"", b"M\0" + deploy.ROUTES_PATH.encode() + b"\0D\0"
+            + deploy.LEGACY_ARTIFACT.encode() + b"\0",
+        ])
+        self.workflow.tree = mock.Mock(return_value={deploy.ROUTES_PATH: "source"})
+        self.workflow.blob = mock.Mock(return_value=source)
+        changes = self.workflow.prepare(self.state, "b" * 40, approval=approval)
+        self.assertEqual(len(changes), 1)
+        self.assertEqual(changes[0]["data"], deploy.merge_import_routes(current, source))
+        self.assertEqual(path.read_bytes(), current)
+
+    def test_reviewed_prepare_never_deletes_a_present_root_artifact(self):
+        path, current, source, approval = self.reviewed_fixture()
+        artifact = self.release / deploy.LEGACY_ARTIFACT
+        artifact.write_bytes(b"existing operator data")
+        self.workflow.git = mock.Mock(side_effect=[
+            b"", b"D\0" + deploy.LEGACY_ARTIFACT.encode() + b"\0",
+        ])
+        self.workflow.tree = mock.Mock(return_value={})
+        with self.assertRaises(deploy.DeploymentError):
+            self.workflow.prepare(self.state, "b" * 40, approval=approval)
+        self.assertEqual(artifact.read_bytes(), b"existing operator data")
+
+    def test_reviewed_approval_does_not_allow_database_configuration(self):
+        path, current, source, approval = self.reviewed_fixture()
+        self.workflow.git = mock.Mock(side_effect=[
+            b"", b"M\0application/config/database.php\0",
+        ])
+        self.workflow.tree = mock.Mock(return_value={})
+        with self.assertRaises(deploy.DeploymentError):
+            self.workflow.prepare(self.state, "b" * 40, approval=approval)
+
+    def test_interrupted_reviewed_update_recovers_routes_and_baseline(self):
+        path, current, source, approval = self.reviewed_fixture()
+        merged = deploy.merge_import_routes(current, source)
+        changes = [self.change(), self.change(deploy.ROUTES_PATH, data=merged)]
+        backup = self.workflow.snapshot(
+            self.state, "b" * 40, changes,
+            reviewed_routes={deploy.ROUTES_PATH: deploy.sha(current)})
+        deploy.write_json(self.workflow.pending_path, {"backup": backup.name})
+        path.write_bytes(merged)
+        self.workflow.rollback(backup.name)
+        self.assertEqual(path.read_bytes(), current)
+        self.assertEqual(self.workflow.state(), self.state)
+
+    def test_reviewed_route_drift_or_wrong_source_stops_prepare(self):
+        path, current, source, approval = self.reviewed_fixture()
+        for wrong_live in (True, False):
+            path.write_bytes(b"drift" if wrong_live else current)
+            self.workflow.git = mock.Mock(side_effect=[
+                b"", b"M\0" + deploy.ROUTES_PATH.encode() + b"\0",
+            ])
+            self.workflow.tree = mock.Mock(return_value={deploy.ROUTES_PATH: "source"})
+            self.workflow.blob = mock.Mock(return_value=source + b"unexpected")
+            with self.subTest(wrong_live=wrong_live), self.assertRaises(deploy.DeploymentError):
+                self.workflow.prepare(self.state, "b" * 40, approval=approval)
+
+    def test_reviewed_route_update_and_rollback_are_one_transaction(self):
+        path, current, source, approval = self.reviewed_fixture()
+        merged = deploy.merge_import_routes(current, source)
+        changes = [self.change(), self.change(deploy.ROUTES_PATH, data=merged),
+                   self.change("assets/new.js", "A")]
+        self.workflow.apply(self.state, "b" * 40, changes,
+                            reviewed_routes={deploy.ROUTES_PATH: deploy.sha(current)})
+        state = self.workflow.state()
+        self.assertEqual(path.read_bytes(), merged)
+        self.assertIn(deploy.ROUTES_PATH, state["reviewed_paths"])
+        self.workflow.status()
+        self.workflow.rollback(state["last_backup"])
+        self.assertEqual(path.read_bytes(), current)
+        self.assertEqual(self.path.read_bytes(), self.old)
+        self.assertFalse((self.release / "assets/new.js").exists())
+        self.assertEqual(self.workflow.state(), self.state)
+
+    def test_reviewed_route_rolls_back_after_postdeployment_failure(self):
+        path, current, source, approval = self.reviewed_fixture()
+        changes = [self.change(), self.change(
+            deploy.ROUTES_PATH, data=deploy.merge_import_routes(current, source))]
+        self.workflow.verify_static.side_effect = deploy.DeploymentError("served asset mismatch")
+        with self.assertRaises(deploy.DeploymentError):
+            self.workflow.apply(self.state, "b" * 40, changes,
+                                reviewed_routes={deploy.ROUTES_PATH: deploy.sha(current)})
+        self.assertEqual(path.read_bytes(), current)
+        self.assertEqual(self.path.read_bytes(), self.old)
+        self.assertEqual(self.workflow.state(), self.state)
 
     def test_unmanaged_existing_file_cannot_be_adopted(self):
         with self.assertRaises(deploy.DeploymentError):
@@ -168,6 +324,18 @@ class WorkflowTests(unittest.TestCase):
         with self.assertRaises(deploy.DeploymentError):
             self.workflow.apply(self.state, "b" * 40, [self.change()])
         self.assertFalse((self.storage / "backups").exists())
+
+    def test_verify_tests_baseline_without_fetching_or_deploying(self):
+        self.workflow.status = mock.Mock()
+        self.workflow.tests = mock.Mock()
+        self.workflow.fetch = mock.Mock()
+        self.workflow.apply = mock.Mock()
+        self.workflow.verify()
+        self.workflow.tests.assert_called_once_with(self.state["commit"], [])
+        self.workflow.health.assert_called_once()
+        self.workflow.fetch.assert_not_called()
+        self.workflow.apply.assert_not_called()
+        self.workflow.reload.assert_not_called()
 
     def test_baseline_only_manages_matching_files(self):
         self.workflow.state_path.unlink()
